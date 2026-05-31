@@ -22,9 +22,17 @@ abstract class NativeVideoEditorPlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  /// Active progress callbacks keyed by the video outputPath.
+  final Map<String, void Function(double progress)> progressCallbacks = {};
+
   /// Processes a video and returns the native output path.
   Future<String> processVideo(VideoEditRequest request) {
     throw UnimplementedError('processVideo() has not been implemented.');
+  }
+
+  /// Cancels an active video processing operation.
+  Future<void> cancelProcessVideo(String outputPath) {
+    throw UnimplementedError('cancelProcessVideo() has not been implemented.');
   }
 
   /// Extracts a thumbnail image and returns the native output path.

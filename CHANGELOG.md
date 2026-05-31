@@ -1,3 +1,10 @@
+## 0.2.0
+
+* Add video export progress reporting callback support (`onProgress` parameter in `processVideo`).
+* Add video export cancellation support (`cancelProcessVideo` method).
+* Upgrade Android compile SDK and target SDK to 36 for SDK 36 compatibility.
+* Update example app with interactive progress tracking and cancellation controls.
+
 ## 0.1.0
 
 * Add video speed adjustment with `speedMultiplier`.

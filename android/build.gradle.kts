@@ -28,7 +28,7 @@ allprojects {
 
 android {
     namespace = "com.example.native_video_editor"
-    compileSdk = 35
+    compileSdk = 36
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

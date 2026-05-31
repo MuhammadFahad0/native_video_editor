@@ -1,8 +1,19 @@
 import AVFoundation
 import Foundation
 import UIKit
+import Flutter
 
 final class VideoAVPipeline {
+  private let channel: FlutterMethodChannel
+  private var exportSession: AVAssetExportSession?
+  private var timer: Timer?
+  private var isRunning = false
+  private let lock = NSLock()
+
+  init(channel: FlutterMethodChannel) {
+    self.channel = channel
+  }
+
   func process(
     _ request: VideoEditRequest,
     completion: @escaping (Result<String, Error>) -> Void
@@ -82,12 +93,52 @@ final class VideoAVPipeline {
       throw VideoAVPipelineError.unableToCreateExportSession
     }
 
+    lock.lock()
+    self.exportSession = exportSession
+    self.isRunning = true
+    lock.unlock()
+
     exportSession.outputURL = outputURL
     exportSession.outputFileType = .mp4
     exportSession.shouldOptimizeForNetworkUse = true
     exportSession.videoComposition = videoComposition
 
-    exportSession.exportAsynchronously {
+    DispatchQueue.main.async { [weak self, weak exportSession] in
+      guard let self = self else { return }
+      self.timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self, weak exportSession] timer in
+        guard let self = self, let exportSession = exportSession else {
+          timer.invalidate()
+          return
+        }
+        self.lock.lock()
+        let running = self.isRunning
+        self.lock.unlock()
+        if !running {
+          timer.invalidate()
+          return
+        }
+
+        let progress = Double(exportSession.progress)
+        self.channel.invokeMethod("onProgress", arguments: [
+          "outputPath": request.outputPath,
+          "progress": progress
+        ])
+
+        if exportSession.status == .completed || exportSession.status == .failed || exportSession.status == .cancelled {
+          timer.invalidate()
+        }
+      }
+    }
+
+    exportSession.exportAsynchronously { [weak self] in
+      guard let self = self else { return }
+      self.lock.lock()
+      self.isRunning = false
+      self.timer?.invalidate()
+      self.timer = nil
+      self.exportSession = nil
+      self.lock.unlock()
+
       switch exportSession.status {
       case .completed:
         completion(.success(request.outputPath))
@@ -97,6 +148,18 @@ final class VideoAVPipeline {
         completion(.failure(VideoAVPipelineError.exportFailed))
       }
     }
+  }
+
+  func cancel() {
+    lock.lock()
+    isRunning = false
+    timer?.invalidate()
+    timer = nil
+    if let session = exportSession {
+      session.cancelExport()
+    }
+    exportSession = nil
+    lock.unlock()
   }
 
   func extractThumbnail(

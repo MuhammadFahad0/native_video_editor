@@ -20,9 +20,22 @@ import androidx.media3.transformer.Transformer
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import android.os.Handler
+import android.os.Looper
+import io.flutter.plugin.common.MethodChannel
+import androidx.media3.transformer.ProgressHolder
 
 @UnstableApi
-internal class VideoTransformerPipeline(private val context: Context) {
+internal class VideoTransformerPipeline(
+    private val context: Context,
+    private val channel: MethodChannel
+) {
+    private val handler = Handler(Looper.getMainLooper())
+    private var progressRunnable: Runnable? = null
+    private var transformer: Transformer? = null
+    @Volatile
+    private var isRunning = false
+
     fun process(
         request: VideoEditRequest,
         onSuccess: (String) -> Unit,
@@ -68,10 +81,12 @@ internal class VideoTransformerPipeline(private val context: Context) {
             }
             .build()
 
-        val transformer = Transformer.Builder(context)
+        isRunning = true
+        val transformerInstance = Transformer.Builder(context)
             .addListener(
                 object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                        cleanup()
                         onSuccess(request.outputPath)
                     }
 
@@ -80,13 +95,53 @@ internal class VideoTransformerPipeline(private val context: Context) {
                         exportResult: ExportResult,
                         exportException: ExportException,
                     ) {
+                        cleanup()
                         onFailure(exportException)
                     }
                 },
             )
             .build()
+        this.transformer = transformerInstance
 
-        transformer.start(editedMediaItem, request.outputPath)
+        transformerInstance.start(editedMediaItem, request.outputPath)
+
+        val runnable = object : Runnable {
+            override fun run() {
+                if (!isRunning) return
+                val progressHolder = ProgressHolder()
+                val state = transformerInstance.getProgress(progressHolder)
+                if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
+                    val progress = progressHolder.progress / 100.0
+                    channel.invokeMethod(
+                        "onProgress",
+                        mapOf("outputPath" to request.outputPath, "progress" to progress)
+                    )
+                }
+                if (state != Transformer.PROGRESS_STATE_UNAVAILABLE && isRunning) {
+                    handler.postDelayed(this, 250)
+                }
+            }
+        }
+        progressRunnable = runnable
+        handler.post(runnable)
+    }
+
+    fun cancel() {
+        if (!isRunning) return
+        isRunning = false
+        cleanup()
+        try {
+            transformer?.cancel()
+        } catch (e: Exception) {
+            // Ignore cancellation errors
+        }
+    }
+
+    private fun cleanup() {
+        isRunning = false
+        progressRunnable?.let { handler.removeCallbacks(it) }
+        progressRunnable = null
+        transformer = null
     }
 
     fun extractThumbnail(request: VideoThumbnailRequest): String {

@@ -9,6 +9,22 @@ import 'native_video_editor_platform_interface.dart';
 const methodChannel = MethodChannel('native_video_editor');
 
 class MethodChannelNativeVideoEditor extends NativeVideoEditorPlatform {
+  MethodChannelNativeVideoEditor() {
+    methodChannel.setMethodCallHandler(_handleMethodCall);
+  }
+
+  Future<void> _handleMethodCall(MethodCall call) async {
+    if (call.method == 'onProgress') {
+      final args = Map<String, Object?>.from(call.arguments as Map);
+      final outputPath = args['outputPath'] as String;
+      final progress = args['progress'] as double;
+      final callback = progressCallbacks[outputPath];
+      if (callback != null) {
+        callback(progress);
+      }
+    }
+  }
+
   @override
   Future<String> processVideo(VideoEditRequest request) async {
     final result = await methodChannel.invokeMethod<String>(
@@ -23,6 +39,14 @@ class MethodChannelNativeVideoEditor extends NativeVideoEditorPlatform {
     }
 
     return result;
+  }
+
+  @override
+  Future<void> cancelProcessVideo(String outputPath) async {
+    await methodChannel.invokeMethod<void>(
+      'cancelProcessVideo',
+      <String, Object?>{'outputPath': outputPath},
+    );
   }
 
   @override

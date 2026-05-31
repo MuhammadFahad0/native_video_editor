@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'native_video_editor'
-  s.version          = '0.0.1'
+  s.version          = '0.2.0'
   s.summary          = 'Native video editing Flutter plugin.'
   s.description      = <<-DESC
 Native video editing Flutter plugin using AVFoundation on iOS.

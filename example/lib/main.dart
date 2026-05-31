@@ -20,6 +20,8 @@ class _ExampleAppState extends State<ExampleApp> {
   String? _inputPath;
   String? _outputPath;
   String? _thumbnailPath;
+  String? _currentOutputPath;
+  double _progress = 0.0;
   String _status = 'Pick a video to begin.';
   bool _isBusy = false;
 
@@ -49,11 +51,16 @@ class _ExampleAppState extends State<ExampleApp> {
 
     setState(() {
       _isBusy = true;
+      _progress = 0.0;
       _status = 'Processing video...';
     });
 
     try {
       final outputPath = await _newCachePath('native_video_editor_output.mp4');
+      setState(() {
+        _currentOutputPath = outputPath;
+      });
+
       final result = await NativeVideoEditor.processVideo(
         VideoEditRequest(
           inputPath: inputPath,
@@ -72,6 +79,12 @@ class _ExampleAppState extends State<ExampleApp> {
           speedMultiplier: 1.25,
           muteAudio: true,
         ),
+        onProgress: (progress) {
+          setState(() {
+            _progress = progress;
+            _status = 'Processing video: ${(progress * 100).toStringAsFixed(0)}%';
+          });
+        },
       );
 
       setState(() {
@@ -81,7 +94,24 @@ class _ExampleAppState extends State<ExampleApp> {
     } catch (error) {
       setState(() => _status = 'Video processing failed: $error');
     } finally {
-      setState(() => _isBusy = false);
+      setState(() {
+        _isBusy = false;
+        _currentOutputPath = null;
+      });
+    }
+  }
+
+  Future<void> _cancel() async {
+    final outputPath = _currentOutputPath;
+    if (outputPath != null) {
+      try {
+        await NativeVideoEditor.cancelProcessVideo(outputPath);
+        setState(() {
+          _status = 'Video processing cancelled.';
+        });
+      } catch (error) {
+        setState(() => _status = 'Failed to cancel: $error');
+      }
     }
   }
 
@@ -145,13 +175,36 @@ class _ExampleAppState extends State<ExampleApp> {
                 onPressed: _isBusy ? null : _process,
                 child: const Text('Run Native Edit'),
               ),
+              if (_isBusy && _currentOutputPath != null) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _cancel,
+                  icon: const Icon(Icons.cancel),
+                  label: const Text('Cancel Edit'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: _isBusy ? null : _extractThumbnail,
                 child: const Text('Extract Thumbnail'),
               ),
               const SizedBox(height: 16),
-              if (_isBusy) const LinearProgressIndicator(),
+              if (_isBusy) ...[
+                LinearProgressIndicator(value: _progress > 0.0 ? _progress : null),
+                if (_progress > 0.0) ...[
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      '${(_progress * 100).toStringAsFixed(0)}%',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ],
               const SizedBox(height: 16),
               Text(_status),
               if (_inputPath != null) ...[

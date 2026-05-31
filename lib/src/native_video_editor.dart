@@ -14,8 +14,24 @@ class NativeVideoEditor {
   ///
   /// The request can combine trimming, normalized cropping, resizing, rotation,
   /// speed adjustment, and audio muting in a single native export operation.
-  static Future<String> processVideo(VideoEditRequest request) {
-    return NativeVideoEditorPlatform.instance.processVideo(request);
+  /// An optional [onProgress] callback can be provided to receive progress updates (0.0 to 1.0).
+  static Future<String> processVideo(
+    VideoEditRequest request, {
+    void Function(double progress)? onProgress,
+  }) async {
+    if (onProgress != null) {
+      NativeVideoEditorPlatform.instance.progressCallbacks[request.outputPath] = onProgress;
+    }
+    try {
+      return await NativeVideoEditorPlatform.instance.processVideo(request);
+    } finally {
+      NativeVideoEditorPlatform.instance.progressCallbacks.remove(request.outputPath);
+    }
+  }
+
+  /// Cancels an active video processing operation for the given [outputPath].
+  static Future<void> cancelProcessVideo(String outputPath) {
+    return NativeVideoEditorPlatform.instance.cancelProcessVideo(outputPath);
   }
 
   /// Extracts a thumbnail image from a video and returns the output path.
