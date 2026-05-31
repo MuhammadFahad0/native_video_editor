@@ -1,8 +1,40 @@
+# Dependency and compilation caches
 .dart_tool/
 .dart-tool/
-.dartServer/
-.pub-cache/
-Dart/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
 pubspec.lock
-example/.dart_tool/
-example/pubspec.lock
+**/pubspec.lock
+
+# Build directories
+build/
+**/build/
+
+# Android build outputs and Gradle directories
+.gradle/
+**/.gradle/
+local.properties
+**/local.properties
+
+# iOS/macOS build artifacts and Pods
+Pods/
+**/Pods/
+.symlinks/
+**/.symlinks/
+.generated/
+**/.generated/
+Flutter/
+**/Flutter/
+Podfile.lock
+**/Podfile.lock
+
+# IDE metadata
+.idea/
+**/.idea/
+.vscode/
+**/.vscode/
+*.xcworkspace
+**/*.xcworkspace
+*.xcuserdata
+**/*.xcuserdata
