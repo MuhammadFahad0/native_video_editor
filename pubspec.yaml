@@ -1,7 +1,7 @@
 name: native_video_editor
 description: A Flutter plugin for native video edits using AVFoundation and AndroidX Media3 Transformer.
 version: 0.0.1
-homepage:
+repository: https://github.com/MuhammadFahad0/native_video_editor
 
 environment:
   sdk: ^3.8.0
