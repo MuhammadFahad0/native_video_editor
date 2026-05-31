@@ -1,9 +1,12 @@
 package com.example.native_video_editor
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
+import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.Crop
 import androidx.media3.effect.Presentation
@@ -15,6 +18,8 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import java.io.File
+import java.io.FileOutputStream
+import java.util.Locale
 
 @UnstableApi
 internal class VideoTransformerPipeline(private val context: Context) {
@@ -50,6 +55,17 @@ internal class VideoTransformerPipeline(private val context: Context) {
         val editedMediaItem = EditedMediaItem.Builder(mediaItem)
             .setRemoveAudio(request.muteAudio)
             .setEffects(Effects(listOf(), videoEffects))
+            .apply {
+                if (request.speedMultiplier != 1f) {
+                    setSpeed(
+                        object : SpeedProvider {
+                            override fun getSpeed(timeUs: Long): Float = request.speedMultiplier
+
+                            override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
+                        },
+                    )
+                }
+            }
             .build()
 
         val transformer = Transformer.Builder(context)
@@ -71,6 +87,40 @@ internal class VideoTransformerPipeline(private val context: Context) {
             .build()
 
         transformer.start(editedMediaItem, request.outputPath)
+    }
+
+    fun extractThumbnail(request: VideoThumbnailRequest): String {
+        val outputFile = File(request.outputPath)
+        outputFile.parentFile?.mkdirs()
+        if (outputFile.exists() && !outputFile.delete()) {
+            throw IllegalStateException("Unable to replace existing thumbnail file.")
+        }
+
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(request.inputPath)
+            val bitmap = retriever.getFrameAtTime(
+                request.positionMs * 1000,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+            ) ?: throw IllegalStateException("Unable to extract a thumbnail frame.")
+
+            FileOutputStream(outputFile).use { output ->
+                val extension = outputFile.extension.lowercase(Locale.US)
+                val format = if (extension == "png") {
+                    android.graphics.Bitmap.CompressFormat.PNG
+                } else {
+                    android.graphics.Bitmap.CompressFormat.JPEG
+                }
+                val quality = if (format == android.graphics.Bitmap.CompressFormat.PNG) 100 else request.quality
+                if (!bitmap.compress(format, quality, output)) {
+                    throw IllegalStateException("Unable to encode thumbnail image.")
+                }
+            }
+        } finally {
+            retriever.release()
+        }
+
+        return request.outputPath
     }
 
     private fun buildVideoEffects(request: VideoEditRequest): List<Effect> {

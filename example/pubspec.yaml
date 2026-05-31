@@ -7,10 +7,12 @@ environment:
   sdk: ^3.8.0
 
 dependencies:
+  file_picker: ^10.3.7
   flutter:
     sdk: flutter
   native_video_editor:
     path: ../
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

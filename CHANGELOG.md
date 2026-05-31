@@ -1,3 +1,10 @@
+## 0.1.0
+
+* Add video speed adjustment with `speedMultiplier`.
+* Add native thumbnail extraction.
+* Improve the example with file picking and sandbox output paths.
+* Add Dart API validation tests.
+
 ## 0.0.2
 
 * Add recognized MIT license metadata.

@@ -9,6 +9,7 @@ struct VideoEditRequest {
   let targetWidth: Int?
   let targetHeight: Int?
   let rotationDegrees: Int
+  let speedMultiplier: Double
   let muteAudio: Bool
 
   init(_ map: [String: Any]) throws {
@@ -27,6 +28,7 @@ struct VideoEditRequest {
     let targetWidth = (map["targetWidth"] as? NSNumber)?.intValue
     let targetHeight = (map["targetHeight"] as? NSNumber)?.intValue
     let rotationDegrees = (map["rotationDegrees"] as? NSNumber)?.intValue ?? 0
+    let speedMultiplier = (map["speedMultiplier"] as? NSNumber)?.doubleValue ?? 1.0
 
     if let trimStartMs = trimStartMs, trimStartMs < 0 {
       throw VideoEditRequestError.invalid("trimStartMs must not be negative.")
@@ -49,6 +51,9 @@ struct VideoEditRequest {
     if ![0, 90, 180, 270].contains(rotationDegrees) {
       throw VideoEditRequestError.invalid("rotationDegrees must be one of 0, 90, 180, or 270.")
     }
+    if !speedMultiplier.isFinite || speedMultiplier < 0.25 || speedMultiplier > 4.0 {
+      throw VideoEditRequestError.invalid("speedMultiplier must be finite and from 0.25 to 4.0.")
+    }
 
     self.inputPath = inputPath
     self.outputPath = outputPath
@@ -58,7 +63,42 @@ struct VideoEditRequest {
     self.targetWidth = targetWidth
     self.targetHeight = targetHeight
     self.rotationDegrees = rotationDegrees
+    self.speedMultiplier = speedMultiplier
     self.muteAudio = (map["muteAudio"] as? Bool) ?? false
+  }
+}
+
+struct VideoThumbnailRequest {
+  let inputPath: String
+  let outputPath: String
+  let positionMs: Int64
+  let quality: Int
+
+  init(_ map: [String: Any]) throws {
+    guard let inputPath = map["inputPath"] as? String, !inputPath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("inputPath is required.")
+    }
+    guard let outputPath = map["outputPath"] as? String, !outputPath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("outputPath is required.")
+    }
+    if URL(fileURLWithPath: inputPath).standardizedFileURL == URL(fileURLWithPath: outputPath).standardizedFileURL {
+      throw VideoEditRequestError.invalid("inputPath and outputPath must be different files.")
+    }
+
+    let positionMs = (map["positionMs"] as? NSNumber)?.int64Value ?? 0
+    let quality = (map["quality"] as? NSNumber)?.intValue ?? 90
+
+    if positionMs < 0 {
+      throw VideoEditRequestError.invalid("positionMs must not be negative.")
+    }
+    if quality < 1 || quality > 100 {
+      throw VideoEditRequestError.invalid("quality must be from 1 to 100.")
+    }
+
+    self.inputPath = inputPath
+    self.outputPath = outputPath
+    self.positionMs = positionMs
+    self.quality = quality
   }
 }
 

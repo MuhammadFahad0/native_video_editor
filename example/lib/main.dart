@@ -1,7 +1,9 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:native_video_editor/native_video_editor.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(const ExampleApp());
@@ -15,28 +17,43 @@ class ExampleApp extends StatefulWidget {
 }
 
 class _ExampleAppState extends State<ExampleApp> {
-  final _inputController = TextEditingController();
-  String? _status;
+  String? _inputPath;
+  String? _outputPath;
+  String? _thumbnailPath;
+  String _status = 'Pick a video to begin.';
+  bool _isBusy = false;
 
-  @override
-  void dispose() {
-    _inputController.dispose();
-    super.dispose();
-  }
+  Future<void> _pickVideo() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.video);
+    final path = result?.files.single.path;
 
-  Future<void> _process() async {
-    final inputPath = _inputController.text.trim();
-    if (inputPath.isEmpty) {
-      setState(() => _status = 'Enter an input video path first.');
+    if (path == null) {
+      setState(() => _status = 'No video selected.');
       return;
     }
 
-    final outputPath =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}native_video_editor_phase1.mp4';
+    setState(() {
+      _inputPath = path;
+      _outputPath = null;
+      _thumbnailPath = null;
+      _status = 'Selected: $path';
+    });
+  }
 
-    setState(() => _status = 'Processing...');
+  Future<void> _process() async {
+    final inputPath = _inputPath;
+    if (inputPath == null) {
+      setState(() => _status = 'Pick a video first.');
+      return;
+    }
+
+    setState(() {
+      _isBusy = true;
+      _status = 'Processing video...';
+    });
 
     try {
+      final outputPath = await _newCachePath('native_video_editor_output.mp4');
       final result = await NativeVideoEditor.processVideo(
         VideoEditRequest(
           inputPath: inputPath,
@@ -52,14 +69,60 @@ class _ExampleAppState extends State<ExampleApp> {
           targetWidth: 720,
           targetHeight: 720,
           rotationDegrees: 90,
+          speedMultiplier: 1.25,
           muteAudio: true,
         ),
       );
 
-      setState(() => _status = 'Output: $result');
+      setState(() {
+        _outputPath = result;
+        _status = 'Video output: $result';
+      });
     } catch (error) {
-      setState(() => _status = 'Failed: $error');
+      setState(() => _status = 'Video processing failed: $error');
+    } finally {
+      setState(() => _isBusy = false);
     }
+  }
+
+  Future<void> _extractThumbnail() async {
+    final inputPath = _inputPath;
+    if (inputPath == null) {
+      setState(() => _status = 'Pick a video first.');
+      return;
+    }
+
+    setState(() {
+      _isBusy = true;
+      _status = 'Extracting thumbnail...';
+    });
+
+    try {
+      final outputPath = await _newCachePath('native_video_editor_thumb.jpg');
+      final result = await NativeVideoEditor.extractThumbnail(
+        VideoThumbnailRequest(
+          inputPath: inputPath,
+          outputPath: outputPath,
+          position: const Duration(seconds: 2),
+          quality: 92,
+        ),
+      );
+
+      setState(() {
+        _thumbnailPath = result;
+        _status = 'Thumbnail output: $result';
+      });
+    } catch (error) {
+      setState(() => _status = 'Thumbnail extraction failed: $error');
+    } finally {
+      setState(() => _isBusy = false);
+    }
+  }
+
+  Future<String> _newCachePath(String fileName) async {
+    final directory = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    return '${directory.path}${Platform.pathSeparator}$timestamp-$fileName';
   }
 
   @override
@@ -72,20 +135,39 @@ class _ExampleAppState extends State<ExampleApp> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                controller: _inputController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Input video path',
-                ),
+              FilledButton.icon(
+                onPressed: _isBusy ? null : _pickVideo,
+                icon: const Icon(Icons.video_file),
+                label: const Text('Pick Video'),
               ),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: _process,
-                child: const Text('Run Phase 1 Edit'),
+                onPressed: _isBusy ? null : _process,
+                child: const Text('Run Native Edit'),
               ),
               const SizedBox(height: 12),
-              Text(_status ?? 'Ready.'),
+              OutlinedButton(
+                onPressed: _isBusy ? null : _extractThumbnail,
+                child: const Text('Extract Thumbnail'),
+              ),
+              const SizedBox(height: 16),
+              if (_isBusy) const LinearProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(_status),
+              if (_inputPath != null) ...[
+                const SizedBox(height: 12),
+                Text('Input: $_inputPath'),
+              ],
+              if (_outputPath != null) ...[
+                const SizedBox(height: 12),
+                Text('Edited video: $_outputPath'),
+              ],
+              if (_thumbnailPath != null) ...[
+                const SizedBox(height: 12),
+                Text('Thumbnail: $_thumbnailPath'),
+                const SizedBox(height: 8),
+                Image.file(File(_thumbnailPath!), height: 160),
+              ],
             ],
           ),
         ),

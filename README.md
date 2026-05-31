@@ -19,7 +19,9 @@ multiple edits in one export.
 | Normalized crop | Yes | Yes |
 | Resize / scale output | Yes | Yes |
 | Rotate 0, 90, 180, or 270 degrees | Yes | Yes |
+| Speed adjustment | Yes | Yes |
 | Mute audio | Yes | Yes |
+| Thumbnail extraction | Yes | Yes |
 
 ## Installation
 
@@ -27,7 +29,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  native_video_editor: ^0.0.1
+  native_video_editor: ^0.1.0
 ```
 
 Then run:
@@ -70,6 +72,7 @@ final outputPath = await NativeVideoEditor.processVideo(
     targetWidth: 720,
     targetHeight: 720,
     rotationDegrees: 90,
+    speedMultiplier: 1.25,
     muteAudio: true,
   ),
 );
@@ -143,6 +146,38 @@ VideoEditRequest(
 );
 ```
 
+### Speed Adjustment
+
+Use `speedMultiplier` to slow down or speed up the exported video:
+
+```dart
+VideoEditRequest(
+  inputPath: inputPath,
+  outputPath: outputPath,
+  speedMultiplier: 1.5,
+);
+```
+
+Values greater than `1.0` make the output faster. Values less than `1.0` make
+the output slower. Supported values are from `0.25` to `4.0`.
+
+## Thumbnail Extraction
+
+Extract a thumbnail frame to a JPEG or PNG file:
+
+```dart
+final thumbnailPath = await NativeVideoEditor.extractThumbnail(
+  VideoThumbnailRequest(
+    inputPath: inputPath,
+    outputPath: thumbnailPath,
+    position: const Duration(seconds: 2),
+    quality: 92,
+  ),
+);
+```
+
+Use `.jpg`, `.jpeg`, or `.png` in `outputPath` to choose the image format.
+
 ## File Path Notes
 
 The plugin expects local file paths. It does not request storage permissions or
@@ -169,7 +204,8 @@ flutter run
 ```
 
 The example applies trimming, cropping, resizing, rotation, and audio muting in
-one request.
+one request. It also demonstrates thumbnail extraction with a real file picker
+and app-cache output paths.
 
 ## Limitations
 
@@ -178,8 +214,8 @@ one request.
   process them.
 * Long videos can take time to export because processing is done by the native
   platform stack.
-* Watermarks, text overlays, speed adjustment, and transcoding controls are
-  planned for later phases.
+* Watermarks, text overlays, progress callbacks, cancellation, and transcoding
+  controls are planned for later phases.
 
 ## Troubleshooting
 

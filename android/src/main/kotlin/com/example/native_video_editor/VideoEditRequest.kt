@@ -11,6 +11,7 @@ internal data class VideoEditRequest(
     val targetWidth: Int?,
     val targetHeight: Int?,
     val rotationDegrees: Int,
+    val speedMultiplier: Float,
     val muteAudio: Boolean,
 ) {
     companion object {
@@ -25,6 +26,7 @@ internal data class VideoEditRequest(
             val targetWidth = (map["targetWidth"] as? Number)?.toInt()
             val targetHeight = (map["targetHeight"] as? Number)?.toInt()
             val rotationDegrees = (map["rotationDegrees"] as? Number)?.toInt() ?: 0
+            val speedMultiplier = (map["speedMultiplier"] as? Number)?.toFloat() ?: 1f
             val cropMap = map["cropRect"] as? Map<*, *>
 
             require(File(inputPath).canonicalPath != File(outputPath).canonicalPath) {
@@ -47,6 +49,9 @@ internal data class VideoEditRequest(
             require(rotationDegrees in setOf(0, 90, 180, 270)) {
                 "rotationDegrees must be one of 0, 90, 180, or 270."
             }
+            require(speedMultiplier.isFinite() && speedMultiplier in 0.25f..4f) {
+                "speedMultiplier must be finite and from 0.25 to 4.0."
+            }
 
             return VideoEditRequest(
                 inputPath = inputPath,
@@ -57,7 +62,39 @@ internal data class VideoEditRequest(
                 targetWidth = targetWidth,
                 targetHeight = targetHeight,
                 rotationDegrees = rotationDegrees,
+                speedMultiplier = speedMultiplier,
                 muteAudio = map["muteAudio"] as? Boolean ?: false,
+            )
+        }
+    }
+}
+
+internal data class VideoThumbnailRequest(
+    val inputPath: String,
+    val outputPath: String,
+    val positionMs: Long,
+    val quality: Int,
+) {
+    companion object {
+        fun fromMap(map: Map<*, *>): VideoThumbnailRequest {
+            val inputPath = map["inputPath"] as? String
+            val outputPath = map["outputPath"] as? String
+            val positionMs = (map["positionMs"] as? Number)?.toLong() ?: 0L
+            val quality = (map["quality"] as? Number)?.toInt() ?: 90
+
+            require(!inputPath.isNullOrBlank()) { "inputPath is required." }
+            require(!outputPath.isNullOrBlank()) { "outputPath is required." }
+            require(File(inputPath).canonicalPath != File(outputPath).canonicalPath) {
+                "inputPath and outputPath must be different files."
+            }
+            require(positionMs >= 0) { "positionMs must not be negative." }
+            require(quality in 1..100) { "quality must be from 1 to 100." }
+
+            return VideoThumbnailRequest(
+                inputPath = inputPath,
+                outputPath = outputPath,
+                positionMs = positionMs,
+                quality = quality,
             )
         }
     }

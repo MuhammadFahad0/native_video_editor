@@ -12,9 +12,9 @@ flutter pub get
 flutter run
 ```
 
-The app asks for an input video path and writes a processed MP4 to the app temp
-directory. The sample operation trims, crops, resizes, rotates, and mutes the
-input video.
+The app uses a native file picker, writes output files to the app cache
+directory, and shows the extracted thumbnail in the UI. The sample operation
+trims, crops, resizes, rotates, speeds up, and mutes the input video.
 
 ## Notes
 

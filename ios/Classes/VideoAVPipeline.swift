@@ -52,10 +52,18 @@ final class VideoAVPipeline {
       try compositionAudioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: .zero)
     }
 
+    let exportDuration = scaledDuration(sourceRange.duration, speedMultiplier: request.speedMultiplier)
+    if request.speedMultiplier != 1.0 {
+      composition.scaleTimeRange(
+        CMTimeRange(start: .zero, duration: sourceRange.duration),
+        toDuration: exportDuration
+      )
+    }
+
     let videoComposition = makeVideoComposition(
       sourceTrack: sourceVideoTrack,
       compositionTrack: compositionVideoTrack,
-      duration: sourceRange.duration,
+      duration: exportDuration,
       request: request
     )
 
@@ -87,6 +95,47 @@ final class VideoAVPipeline {
         completion(.failure(exportSession.error ?? VideoAVPipelineError.exportFailed))
       default:
         completion(.failure(VideoAVPipelineError.exportFailed))
+      }
+    }
+  }
+
+  func extractThumbnail(
+    _ request: VideoThumbnailRequest,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        let outputURL = URL(fileURLWithPath: request.outputPath)
+        try FileManager.default.createDirectory(
+          at: outputURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+          try FileManager.default.removeItem(at: outputURL)
+        }
+
+        let asset = AVURLAsset(url: URL(fileURLWithPath: request.inputPath))
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        let time = CMTime(value: request.positionMs, timescale: 1000)
+        let image = try generator.copyCGImage(at: time, actualTime: nil)
+        let uiImage = UIImage(cgImage: image)
+
+        let data: Data?
+        if outputURL.pathExtension.lowercased() == "png" {
+          data = uiImage.pngData()
+        } else {
+          data = uiImage.jpegData(compressionQuality: CGFloat(request.quality) / 100.0)
+        }
+
+        guard let data = data else {
+          throw VideoAVPipelineError.thumbnailEncodingFailed
+        }
+
+        try data.write(to: outputURL, options: .atomic)
+        completion(.success(request.outputPath))
+      } catch {
+        completion(.failure(error))
       }
     }
   }
@@ -226,6 +275,10 @@ final class VideoAVPipeline {
     max(2, (floor(value / 2) * 2))
   }
 
+  private func scaledDuration(_ duration: CMTime, speedMultiplier: Double) -> CMTime {
+    CMTimeMultiplyByFloat64(duration, multiplier: 1.0 / speedMultiplier)
+  }
+
   private func millisecondsToTime(_ milliseconds: Int64) -> CMTime {
     CMTime(value: milliseconds, timescale: 1000)
   }
@@ -240,6 +293,7 @@ enum VideoAVPipelineError: LocalizedError {
   case unableToCreateTrack
   case unableToCreateExportSession
   case invalidTrimRange
+  case thumbnailEncodingFailed
   case exportFailed
 
   var errorDescription: String? {
@@ -252,6 +306,8 @@ enum VideoAVPipelineError: LocalizedError {
       return "Unable to create an AVFoundation export session."
     case .invalidTrimRange:
       return "The requested trim range does not overlap the input asset duration."
+    case .thumbnailEncodingFailed:
+      return "Unable to encode the thumbnail image."
     case .exportFailed:
       return "The AVFoundation export failed."
     }

@@ -1,6 +1,7 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'models/video_edit_request.dart';
+import 'models/video_thumbnail_request.dart';
 import 'native_video_editor_method_channel.dart';
 
 /// Platform interface for native video editor implementations.
@@ -24,6 +25,11 @@ abstract class NativeVideoEditorPlatform extends PlatformInterface {
   /// Processes a video and returns the native output path.
   Future<String> processVideo(VideoEditRequest request) {
     throw UnimplementedError('processVideo() has not been implemented.');
+  }
+
+  /// Extracts a thumbnail image and returns the native output path.
+  Future<String> extractThumbnail(VideoThumbnailRequest request) {
+    throw UnimplementedError('extractThumbnail() has not been implemented.');
   }
 }
 

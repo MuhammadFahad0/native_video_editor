@@ -15,6 +15,7 @@ class VideoEditRequest {
     this.targetWidth,
     this.targetHeight,
     this.rotationDegrees = 0,
+    this.speedMultiplier = 1.0,
     this.muteAudio = false,
   });
 
@@ -53,6 +54,12 @@ class VideoEditRequest {
   /// Supported values are `0`, `90`, `180`, and `270`.
   final int rotationDegrees;
 
+  /// Playback speed multiplier for the exported video.
+  ///
+  /// Values greater than `1.0` make the output faster. Values less than `1.0`
+  /// make the output slower. Supported values are from `0.25` to `4.0`.
+  final double speedMultiplier;
+
   /// Whether to omit audio from the exported video.
   final bool muteAudio;
 
@@ -69,6 +76,7 @@ class VideoEditRequest {
       'targetWidth': targetWidth,
       'targetHeight': targetHeight,
       'rotationDegrees': rotationDegrees,
+      'speedMultiplier': speedMultiplier,
       'muteAudio': muteAudio,
     };
   }
@@ -121,6 +129,16 @@ class VideoEditRequest {
         rotationDegrees,
         'rotationDegrees',
         'Must be one of 0, 90, 180, or 270.',
+      );
+    }
+    if (speedMultiplier.isNaN ||
+        speedMultiplier.isInfinite ||
+        speedMultiplier < 0.25 ||
+        speedMultiplier > 4.0) {
+      throw ArgumentError.value(
+        speedMultiplier,
+        'speedMultiplier',
+        'Must be finite and from 0.25 to 4.0.',
       );
     }
 

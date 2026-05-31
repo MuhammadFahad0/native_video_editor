@@ -15,6 +15,8 @@ public class NativeVideoEditorPlugin: NSObject, FlutterPlugin {
     switch call.method {
     case "processVideo":
       processVideo(call, result: result)
+    case "extractThumbnail":
+      extractThumbnail(call, result: result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -43,6 +45,38 @@ public class NativeVideoEditorPlugin: NSObject, FlutterPlugin {
           result(
             FlutterError(
               code: "processing_failed",
+              message: error.localizedDescription,
+              details: String(describing: error)
+            )
+          )
+        }
+      }
+    }
+  }
+
+  private func extractThumbnail(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let arguments = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "invalid_arguments", message: "Expected a request map.", details: nil))
+      return
+    }
+
+    let request: VideoThumbnailRequest
+    do {
+      request = try VideoThumbnailRequest(arguments)
+    } catch {
+      result(FlutterError(code: "invalid_arguments", message: error.localizedDescription, details: nil))
+      return
+    }
+
+    VideoAVPipeline().extractThumbnail(request) { pipelineResult in
+      DispatchQueue.main.async {
+        switch pipelineResult {
+        case .success(let outputPath):
+          result(outputPath)
+        case .failure(let error):
+          result(
+            FlutterError(
+              code: "thumbnail_failed",
               message: error.localizedDescription,
               details: String(describing: error)
             )
