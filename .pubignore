@@ -1,0 +1,8 @@
+.dart_tool/
+.dart-tool/
+.dartServer/
+.pub-cache/
+Dart/
+pubspec.lock
+example/.dart_tool/
+example/pubspec.lock

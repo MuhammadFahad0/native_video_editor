@@ -1,6 +1,11 @@
 import 'video_crop_rect.dart';
 
+/// Describes a native video export request.
+///
+/// All configured edits are applied in a single native processing operation.
+/// At least [inputPath] and [outputPath] are required.
 class VideoEditRequest {
+  /// Creates a video edit request.
   const VideoEditRequest({
     required this.inputPath,
     required this.outputPath,
@@ -13,16 +18,45 @@ class VideoEditRequest {
     this.muteAudio = false,
   });
 
+  /// Path to the source video file.
+  ///
+  /// The file must be readable by the host app.
   final String inputPath;
+
+  /// Path where the processed video should be written.
+  ///
+  /// This path must be different from [inputPath]. Existing files are replaced
+  /// by the native exporter.
   final String outputPath;
+
+  /// Optional inclusive trim start time.
   final Duration? trimStart;
+
+  /// Optional exclusive trim end time.
   final Duration? trimEnd;
+
+  /// Optional normalized crop rectangle.
   final VideoCropRect? cropRect;
+
+  /// Optional target output width in pixels.
+  ///
+  /// Must be provided together with [targetHeight] and must be an even number.
   final int? targetWidth;
+
+  /// Optional target output height in pixels.
+  ///
+  /// Must be provided together with [targetWidth] and must be an even number.
   final int? targetHeight;
+
+  /// Clockwise rotation to apply, in degrees.
+  ///
+  /// Supported values are `0`, `90`, `180`, and `270`.
   final int rotationDegrees;
+
+  /// Whether to omit audio from the exported video.
   final bool muteAudio;
 
+  /// Converts this request to the method-channel payload.
   Map<String, Object?> toMap() {
     validate();
 
@@ -39,6 +73,7 @@ class VideoEditRequest {
     };
   }
 
+  /// Throws an [ArgumentError] if this request is not valid.
   void validate() {
     if (inputPath.trim().isEmpty) {
       throw ArgumentError.value(inputPath, 'inputPath', 'Must not be empty.');

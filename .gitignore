@@ -1,5 +1,8 @@
 .dart_tool/
+.dart-tool/
+.dartServer/
 .pub-cache/
+Dart/
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
