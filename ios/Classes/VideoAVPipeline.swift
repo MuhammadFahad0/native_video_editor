@@ -266,19 +266,24 @@ final class VideoAVPipeline {
       CGAffineTransform(translationX: -displayedRect.minX - cropFrame.minX, y: -displayedRect.minY - cropFrame.minY)
     )
 
+    let rotationTransform: CGAffineTransform
     switch rotationDegrees {
     case 90:
-      transform = transform.concatenating(CGAffineTransform(translationX: cropFrame.height, y: 0))
-      transform = transform.concatenating(CGAffineTransform(rotationAngle: .pi / 2))
+      rotationTransform = CGAffineTransform(rotationAngle: .pi / 2)
     case 180:
-      transform = transform.concatenating(CGAffineTransform(translationX: cropFrame.width, y: cropFrame.height))
-      transform = transform.concatenating(CGAffineTransform(rotationAngle: .pi))
+      rotationTransform = CGAffineTransform(rotationAngle: .pi)
     case 270:
-      transform = transform.concatenating(CGAffineTransform(translationX: 0, y: cropFrame.width))
-      transform = transform.concatenating(CGAffineTransform(rotationAngle: -.pi / 2))
+      rotationTransform = CGAffineTransform(rotationAngle: -.pi / 2)
     default:
-      break
+      rotationTransform = .identity
     }
+
+    let cropBounds = CGRect(origin: .zero, size: cropFrame.size)
+    let rotatedBounds = cropBounds.applying(rotationTransform)
+    transform = transform.concatenating(rotationTransform)
+    transform = transform.concatenating(
+      CGAffineTransform(translationX: -rotatedBounds.minX, y: -rotatedBounds.minY)
+    )
 
     transform = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
 
