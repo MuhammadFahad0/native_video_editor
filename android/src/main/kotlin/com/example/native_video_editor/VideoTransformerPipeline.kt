@@ -190,8 +190,11 @@ internal class VideoTransformerPipeline(
         }
 
         if (request.rotationDegrees != 0) {
+            val counterClockwiseRotationDegrees =
+                (360 - request.rotationDegrees) % 360
+
             effects += ScaleAndRotateTransformation.Builder()
-                .setRotationDegrees(request.rotationDegrees.toFloat())
+                .setRotationDegrees(counterClockwiseRotationDegrees.toFloat())
                 .build()
         }
 
