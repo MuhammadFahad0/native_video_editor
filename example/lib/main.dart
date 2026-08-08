@@ -82,7 +82,8 @@ class _ExampleAppState extends State<ExampleApp> {
         onProgress: (progress) {
           setState(() {
             _progress = progress;
-            _status = 'Processing video: ${(progress * 100).toStringAsFixed(0)}%';
+            _status =
+                'Processing video: ${(progress * 100).toStringAsFixed(0)}%';
           });
         },
       );
@@ -194,7 +195,9 @@ class _ExampleAppState extends State<ExampleApp> {
               ),
               const SizedBox(height: 16),
               if (_isBusy) ...[
-                LinearProgressIndicator(value: _progress > 0.0 ? _progress : null),
+                LinearProgressIndicator(
+                  value: _progress > 0.0 ? _progress : null,
+                ),
                 if (_progress > 0.0) ...[
                   const SizedBox(height: 8),
                   Center(

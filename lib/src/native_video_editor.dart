@@ -20,12 +20,15 @@ class NativeVideoEditor {
     void Function(double progress)? onProgress,
   }) async {
     if (onProgress != null) {
-      NativeVideoEditorPlatform.instance.progressCallbacks[request.outputPath] = onProgress;
+      NativeVideoEditorPlatform.instance.progressCallbacks[request.outputPath] =
+          onProgress;
     }
     try {
       return await NativeVideoEditorPlatform.instance.processVideo(request);
     } finally {
-      NativeVideoEditorPlatform.instance.progressCallbacks.remove(request.outputPath);
+      NativeVideoEditorPlatform.instance.progressCallbacks.remove(
+        request.outputPath,
+      );
     }
   }
 

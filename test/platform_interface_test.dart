@@ -3,11 +3,8 @@ import 'package:native_video_editor/src/native_video_editor_method_channel.dart'
 import 'package:native_video_editor/src/native_video_editor_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
-class _FakePlatform extends NativeVideoEditorPlatform with MockPlatformInterfaceMixin {}
-
-class _UnverifiedPlatform extends NativeVideoEditorPlatform {
-  _UnverifiedPlatform() : super();
-}
+class _FakePlatform extends NativeVideoEditorPlatform
+    with MockPlatformInterfaceMixin {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -18,7 +15,10 @@ void main() {
     });
 
     test('default instance is MethodChannelNativeVideoEditor', () {
-      expect(NativeVideoEditorPlatform.instance, isA<MethodChannelNativeVideoEditor>());
+      expect(
+        NativeVideoEditorPlatform.instance,
+        isA<MethodChannelNativeVideoEditor>(),
+      );
     });
 
     test('setting a valid mock instance succeeds', () {
@@ -31,7 +31,6 @@ void main() {
       NativeVideoEditorPlatform.instance = fake;
       expect(NativeVideoEditorPlatform.instance, same(fake));
     });
-
 
     test('progressCallbacks map is independent per instance', () {
       final a = _FakePlatform();
