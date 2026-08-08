@@ -4,228 +4,855 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:native_video_editor/native_video_editor.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
+
+import 'widgets/interactive_crop_overlay.dart';
+import 'widgets/timeline_trim_slider.dart';
 
 void main() {
-  runApp(const ExampleApp());
+  runApp(const NativeVideoEditorExampleApp());
 }
 
-class ExampleApp extends StatefulWidget {
-  const ExampleApp({super.key});
+class NativeVideoEditorExampleApp extends StatelessWidget {
+  const NativeVideoEditorExampleApp({super.key});
 
   @override
-  State<ExampleApp> createState() => _ExampleAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Native Video Editor',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF0F0F1A),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurpleAccent,
+          brightness: Brightness.dark,
+          surface: const Color(0xFF181828),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF141424),
+          elevation: 0,
+        ),
+      ),
+      home: const VideoEditorHomeScreen(),
+    );
+  }
 }
 
-class _ExampleAppState extends State<ExampleApp> {
+class VideoEditorHomeScreen extends StatefulWidget {
+  const VideoEditorHomeScreen({super.key});
+
+  @override
+  State<VideoEditorHomeScreen> createState() => _VideoEditorHomeScreenState();
+}
+
+class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
+    with SingleTickerProviderStateMixin {
   String? _inputPath;
   String? _outputPath;
   String? _thumbnailPath;
-  String? _currentOutputPath;
-  double _progress = 0.0;
-  String _status = 'Pick a video to begin.';
-  bool _isBusy = false;
+  String? _activeExportPath;
+
+  VideoPlayerController? _inputController;
+  VideoPlayerController? _outputController;
+
+  Duration _videoDuration = Duration.zero;
+  Duration _trimStart = Duration.zero;
+  Duration _trimEnd = Duration.zero;
+  Duration _currentPosition = Duration.zero;
+
+  VideoCropRect _cropRect = const VideoCropRect(
+    left: 0.0,
+    top: 0.0,
+    width: 1.0,
+    height: 1.0,
+  );
+  bool _showCropOverlay = true;
+
+  int _rotationDegrees = 0;
+  double _speedMultiplier = 1.0;
+  bool _muteAudio = false;
+
+  int? _targetWidth;
+  int? _targetHeight;
+
+  bool _isProcessing = false;
+  double _exportProgress = 0.0;
+  DateTime? _exportStartTime;
+  Duration? _estimatedTimeRemaining;
+  String _statusMessage = 'Pick a video file to begin editing.';
+
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _inputController?.dispose();
+    _outputController?.dispose();
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.video);
     final path = result?.files.single.path;
+    if (path == null) return;
 
-    if (path == null) {
-      setState(() => _status = 'No video selected.');
-      return;
-    }
+    await _inputController?.dispose();
+    await _outputController?.dispose();
+
+    final controller = VideoPlayerController.file(File(path));
+    await controller.initialize();
+
+    final duration = controller.value.duration;
 
     setState(() {
       _inputPath = path;
       _outputPath = null;
       _thumbnailPath = null;
-      _status = 'Selected: $path';
+      _outputController = null;
+      _inputController = controller;
+      _videoDuration = duration;
+      _trimStart = Duration.zero;
+      _trimEnd = duration;
+      _currentPosition = Duration.zero;
+      _cropRect = const VideoCropRect(
+        left: 0.0,
+        top: 0.0,
+        width: 1.0,
+        height: 1.0,
+      );
+      _rotationDegrees = 0;
+      _speedMultiplier = 1.0;
+      _muteAudio = false;
+      _targetWidth = null;
+      _targetHeight = null;
+      _statusMessage =
+          'Video loaded: ${controller.value.size.width.toInt()}x${controller.value.size.height.toInt()}';
+    });
+
+    controller.addListener(() {
+      if (mounted && controller.value.isPlaying) {
+        setState(() {
+          _currentPosition = controller.value.position;
+        });
+      }
+    });
+
+    controller.setLooping(true);
+    controller.play();
+  }
+
+  void _seekTo(Duration position) {
+    _inputController?.seekTo(position);
+    setState(() {
+      _currentPosition = position;
     });
   }
 
-  Future<void> _process() async {
-    final inputPath = _inputPath;
-    if (inputPath == null) {
-      setState(() => _status = 'Pick a video first.');
+  void _setAspectPreset(double aspect) {
+    if (aspect == 0) {
+      // Full / Free
+      setState(() {
+        _cropRect = const VideoCropRect(left: 0, top: 0, width: 1, height: 1);
+      });
       return;
     }
 
+    final videoAspect = _inputController?.value.aspectRatio ?? 1.0;
+    double newWidth = 1.0;
+    double newHeight = 1.0;
+
+    if (aspect > videoAspect) {
+      newHeight = videoAspect / aspect;
+    } else {
+      newWidth = aspect / videoAspect;
+    }
+
+    newWidth = newWidth.clamp(0.2, 1.0);
+    newHeight = newHeight.clamp(0.2, 1.0);
+
+    final left = (1.0 - newWidth) / 2;
+    final top = (1.0 - newHeight) / 2;
+
     setState(() {
-      _isBusy = true;
-      _progress = 0.0;
-      _status = 'Processing video...';
+      _cropRect = VideoCropRect(
+        left: double.parse(left.toStringAsFixed(3)),
+        top: double.parse(top.toStringAsFixed(3)),
+        width: double.parse(newWidth.toStringAsFixed(3)),
+        height: double.parse(newHeight.toStringAsFixed(3)),
+      );
+    });
+  }
+
+  Future<void> _processVideo() async {
+    final inputPath = _inputPath;
+    if (inputPath == null) return;
+
+    final outputPath = await _getCachePath('edited_export.mp4');
+
+    setState(() {
+      _isProcessing = true;
+      _exportProgress = 0.0;
+      _exportStartTime = DateTime.now();
+      _estimatedTimeRemaining = null;
+      _activeExportPath = outputPath;
+      _statusMessage = 'Exporting native video edits...';
     });
 
-    try {
-      final outputPath = await _newCachePath('native_video_editor_output.mp4');
-      setState(() {
-        _currentOutputPath = outputPath;
-      });
+    _inputController?.pause();
 
-      final result = await NativeVideoEditor.processVideo(
-        VideoEditRequest(
-          inputPath: inputPath,
-          outputPath: outputPath,
-          trimStart: const Duration(seconds: 1),
-          trimEnd: const Duration(seconds: 8),
-          cropRect: const VideoCropRect(
-            left: 0.1,
-            top: 0.1,
-            width: 0.8,
-            height: 0.8,
-          ),
-          targetWidth: 720,
-          targetHeight: 720,
-          rotationDegrees: 90,
-          speedMultiplier: 1.25,
-          muteAudio: true,
-        ),
+    try {
+      final request = VideoEditRequest(
+        inputPath: inputPath,
+        outputPath: outputPath,
+        trimStart: _trimStart > Duration.zero ? _trimStart : null,
+        trimEnd: _trimEnd < _videoDuration ? _trimEnd : null,
+        cropRect:
+            (_cropRect.left == 0 &&
+                _cropRect.top == 0 &&
+                _cropRect.width == 1 &&
+                _cropRect.height == 1)
+            ? null
+            : _cropRect,
+        targetWidth: _targetWidth,
+        targetHeight: _targetHeight,
+        rotationDegrees: _rotationDegrees,
+        speedMultiplier: _speedMultiplier,
+        muteAudio: _muteAudio,
+      );
+
+      final resultPath = await NativeVideoEditor.processVideo(
+        request,
         onProgress: (progress) {
+          if (!mounted) return;
+          final now = DateTime.now();
+          final elapsed = now.difference(_exportStartTime!);
+          Duration? eta;
+          if (progress > 0.05) {
+            final totalEstMs = elapsed.inMilliseconds / progress;
+            final remainingMs = totalEstMs - elapsed.inMilliseconds;
+            eta = Duration(milliseconds: remainingMs.round());
+          }
+
           setState(() {
-            _progress = progress;
-            _status =
-                'Processing video: ${(progress * 100).toStringAsFixed(0)}%';
+            _exportProgress = progress;
+            _estimatedTimeRemaining = eta;
+            _statusMessage =
+                'Exporting: ${(progress * 100).toStringAsFixed(0)}%';
           });
         },
       );
 
+      await _outputController?.dispose();
+      final outController = VideoPlayerController.file(File(resultPath));
+      await outController.initialize();
+      outController.setLooping(true);
+
       setState(() {
-        _outputPath = result;
-        _status = 'Video output: $result';
+        _outputPath = resultPath;
+        _outputController = outController;
+        _statusMessage = 'Export complete!';
+        _tabController.animateTo(2); // Switch to Output Tab
       });
+
+      outController.play();
     } catch (error) {
-      setState(() => _status = 'Video processing failed: $error');
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Export failed: $error';
+        });
+      }
     } finally {
-      setState(() {
-        _isBusy = false;
-        _currentOutputPath = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _activeExportPath = null;
+        });
+      }
     }
   }
 
-  Future<void> _cancel() async {
-    final outputPath = _currentOutputPath;
-    if (outputPath != null) {
-      try {
-        await NativeVideoEditor.cancelProcessVideo(outputPath);
-        setState(() {
-          _status = 'Video processing cancelled.';
-        });
-      } catch (error) {
-        setState(() => _status = 'Failed to cancel: $error');
-      }
+  Future<void> _cancelExport() async {
+    final path = _activeExportPath;
+    if (path == null) return;
+    try {
+      await NativeVideoEditor.cancelProcessVideo(path);
+      setState(() {
+        _statusMessage = 'Export cancelled by user.';
+      });
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Cancellation error: $e';
+      });
     }
   }
 
   Future<void> _extractThumbnail() async {
     final inputPath = _inputPath;
-    if (inputPath == null) {
-      setState(() => _status = 'Pick a video first.');
-      return;
-    }
+    if (inputPath == null) return;
 
-    setState(() {
-      _isBusy = true;
-      _status = 'Extracting thumbnail...';
-    });
-
+    final outputPath = await _getCachePath('thumbnail.jpg');
     try {
-      final outputPath = await _newCachePath('native_video_editor_thumb.jpg');
       final result = await NativeVideoEditor.extractThumbnail(
         VideoThumbnailRequest(
           inputPath: inputPath,
           outputPath: outputPath,
-          position: const Duration(seconds: 2),
-          quality: 92,
+          position: _currentPosition,
+          quality: 90,
         ),
       );
 
       setState(() {
         _thumbnailPath = result;
-        _status = 'Thumbnail output: $result';
+        _statusMessage =
+            'Extracted thumbnail at ${_currentPosition.inSeconds}s';
       });
-    } catch (error) {
-      setState(() => _status = 'Thumbnail extraction failed: $error');
-    } finally {
-      setState(() => _isBusy = false);
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Thumbnail extraction failed: $e';
+      });
     }
   }
 
-  Future<String> _newCachePath(String fileName) async {
-    final directory = await getTemporaryDirectory();
+  Future<String> _getCachePath(String fileName) async {
+    final dir = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    return '${directory.path}${Platform.pathSeparator}$timestamp-$fileName';
+    return '${dir.path}${Platform.pathSeparator}$timestamp-$fileName';
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: const Text('Native Video Editor')),
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton.icon(
-                onPressed: _isBusy ? null : _pickVideo,
-                icon: const Icon(Icons.video_file),
-                label: const Text('Pick Video'),
-              ),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _isBusy ? null : _process,
-                child: const Text('Run Native Edit'),
-              ),
-              if (_isBusy && _currentOutputPath != null) ...[
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _cancel,
-                  icon: const Icon(Icons.cancel),
-                  label: const Text('Cancel Edit'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _isBusy ? null : _extractThumbnail,
-                child: const Text('Extract Thumbnail'),
-              ),
-              const SizedBox(height: 16),
-              if (_isBusy) ...[
-                LinearProgressIndicator(
-                  value: _progress > 0.0 ? _progress : null,
-                ),
-                if (_progress > 0.0) ...[
-                  const SizedBox(height: 8),
-                  Center(
-                    child: Text(
-                      '${(_progress * 100).toStringAsFixed(0)}%',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Row(
+          children: [
+            Icon(Icons.video_library_rounded, color: Colors.deepPurpleAccent),
+            SizedBox(width: 8),
+            Text(
+              'Native Video Editor',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: 'Pick Video',
+            onPressed: _isProcessing ? null : _pickVideo,
+          ),
+        ],
+        bottom: _inputController != null
+            ? TabBar(
+                controller: _tabController,
+                indicatorColor: Colors.deepPurpleAccent,
+                tabs: const [
+                  Tab(icon: Icon(Icons.crop_rotate), text: 'Canvas & Crop'),
+                  Tab(icon: Icon(Icons.tune), text: 'Trim & Adjust'),
+                  Tab(
+                    icon: Icon(Icons.video_collection),
+                    text: 'Result Preview',
                   ),
                 ],
+              )
+            : null,
+      ),
+      body: _inputController == null
+          ? _buildEmptyState()
+          : Column(
+              children: [
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildCanvasTab(),
+                      _buildControlsTab(),
+                      _buildResultTab(),
+                    ],
+                  ),
+                ),
+                if (_isProcessing) _buildExportBanner(),
+                _buildBottomActionBar(),
               ],
-              const SizedBox(height: 16),
-              Text(_status),
-              if (_inputPath != null) ...[
-                const SizedBox(height: 12),
-                Text('Input: $_inputPath'),
-              ],
-              if (_outputPath != null) ...[
-                const SizedBox(height: 12),
-                Text('Edited video: $_outputPath'),
-              ],
-              if (_thumbnailPath != null) ...[
-                const SizedBox(height: 12),
-                Text('Thumbnail: $_thumbnailPath'),
-                const SizedBox(height: 8),
-                Image.file(File(_thumbnailPath!), height: 160),
-              ],
+            ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.deepPurpleAccent.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.video_call_rounded,
+                size: 64,
+                color: Colors.deepPurpleAccent,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'No Video Selected',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Pick a video file from your device to edit natively with AVFoundation & Media3 Transformer.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white54),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _pickVideo,
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Select Video File'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.deepPurpleAccent,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCanvasTab() {
+    final controller = _inputController!;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Video Preview Container with Crop Overlay
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              color: Colors.black,
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio > 0
+                    ? controller.value.aspectRatio
+                    : 16 / 9,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(controller),
+                    if (_showCropOverlay)
+                      InteractiveCropOverlay(
+                        cropRect: _cropRect,
+                        onChanged: (rect) {
+                          setState(() {
+                            _cropRect = rect;
+                          });
+                        },
+                      ),
+                    // Floating Play/Pause Button
+                    Positioned(
+                      bottom: 12,
+                      right: 12,
+                      child: FloatingActionButton.small(
+                        heroTag: 'play_pause',
+                        backgroundColor: Colors.black54,
+                        onPressed: () {
+                          setState(() {
+                            controller.value.isPlaying
+                                ? controller.pause()
+                                : controller.play();
+                          });
+                        },
+                        child: Icon(
+                          controller.value.isPlaying
+                              ? Icons.pause
+                              : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Aspect Ratio Presets
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Crop Presets',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Switch(
+                value: _showCropOverlay,
+                activeTrackColor: Colors.deepPurpleAccent,
+                onChanged: (v) => setState(() => _showCropOverlay = v),
+              ),
             ],
           ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildAspectChip('Free', 0.0),
+                _buildAspectChip('1:1 Square', 1.0),
+                _buildAspectChip('16:9 Landscape', 16 / 9),
+                _buildAspectChip('9:16 Portrait', 9 / 16),
+                _buildAspectChip('4:5 Social', 4 / 5),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAspectChip(String label, double ratio) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: false,
+        selectedColor: Colors.deepPurpleAccent,
+        onSelected: (_) => _setAspectPreset(ratio),
+      ),
+    );
+  }
+
+  Widget _buildControlsTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Timeline Trim Slider
+          const Text(
+            'Trim Selection',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          TimelineTrimSlider(
+            duration: _videoDuration,
+            trimStart: _trimStart,
+            trimEnd: _trimEnd,
+            currentPosition: _currentPosition,
+            onTrimChanged: (start, end) {
+              setState(() {
+                _trimStart = start;
+                _trimEnd = end;
+              });
+            },
+            onSeek: _seekTo,
+          ),
+          const SizedBox(height: 20),
+
+          // Rotation Selection
+          const Text(
+            'Rotation',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [0, 90, 180, 270].map((deg) {
+              final selected = _rotationDegrees == deg;
+              return ChoiceChip(
+                label: Text('$deg°'),
+                selected: selected,
+                selectedColor: Colors.deepPurpleAccent,
+                onSelected: (_) => setState(() => _rotationDegrees = deg),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 20),
+
+          // Playback Speed Multiplier
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Speed Multiplier',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Text(
+                '${_speedMultiplier.toStringAsFixed(2)}x',
+                style: const TextStyle(
+                  color: Colors.deepPurpleAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: _speedMultiplier,
+            min: 0.25,
+            max: 4.0,
+            divisions: 15,
+            activeColor: Colors.deepPurpleAccent,
+            onChanged: (v) => setState(() => _speedMultiplier = v),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [0.5, 1.0, 1.5, 2.0].map((s) {
+              return OutlinedButton(
+                onPressed: () => setState(() => _speedMultiplier = s),
+                child: Text('${s}x'),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 20),
+
+          // Mute Switch
+          SwitchListTile(
+            title: const Text('Mute Audio'),
+            subtitle: const Text('Remove audio track from exported video'),
+            value: _muteAudio,
+            activeTrackColor: Colors.deepPurpleAccent,
+            onChanged: (v) => setState(() => _muteAudio = v),
+          ),
+          const SizedBox(height: 12),
+
+          // Target Resolution Selection
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Target Output Size',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              DropdownButton<String>(
+                value: _targetWidth == null
+                    ? 'Original'
+                    : '${_targetWidth}x$_targetHeight',
+                items: const [
+                  DropdownMenuItem(
+                    value: 'Original',
+                    child: Text('Original Resolution'),
+                  ),
+                  DropdownMenuItem(
+                    value: '720x720',
+                    child: Text('720 x 720 (Square)'),
+                  ),
+                  DropdownMenuItem(
+                    value: '1280x720',
+                    child: Text('1280 x 720 (720p HD)'),
+                  ),
+                  DropdownMenuItem(
+                    value: '1920x1080',
+                    child: Text('1920 x 1080 (1080p Full HD)'),
+                  ),
+                  DropdownMenuItem(
+                    value: '480x480',
+                    child: Text('480 x 480 (SD)'),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    if (value == 'Original' || value == null) {
+                      _targetWidth = null;
+                      _targetHeight = null;
+                    } else {
+                      final parts = value.split('x');
+                      _targetWidth = int.parse(parts[0]);
+                      _targetHeight = int.parse(parts[1]);
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_outputController != null) ...[
+            const Text(
+              'Exported Video Preview',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                color: Colors.black,
+                constraints: const BoxConstraints(maxHeight: 280),
+                child: AspectRatio(
+                  aspectRatio: _outputController!.value.aspectRatio > 0
+                      ? _outputController!.value.aspectRatio
+                      : 16 / 9,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      VideoPlayer(_outputController!),
+                      FloatingActionButton.small(
+                        heroTag: 'output_play_pause',
+                        backgroundColor: Colors.black54,
+                        onPressed: () {
+                          setState(() {
+                            _outputController!.value.isPlaying
+                                ? _outputController!.pause()
+                                : _outputController!.play();
+                          });
+                        },
+                        child: Icon(
+                          _outputController!.value.isPlaying
+                              ? Icons.pause
+                              : Icons.play_arrow,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SelectableText('File Path: $_outputPath'),
+            const Divider(height: 32),
+          ] else ...[
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No export generated yet. Configure options and tap "Export Video".',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
+            ),
+          ],
+
+          // Thumbnail Extraction Section
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Thumbnail Extractor',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              FilledButton.icon(
+                onPressed: _isProcessing ? null : _extractThumbnail,
+                icon: const Icon(Icons.image),
+                label: const Text('Extract Frame'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_thumbnailPath != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(_thumbnailPath!),
+                height: 180,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 4),
+            SelectableText('Thumbnail Path: $_thumbnailPath'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExportBanner() {
+    final etaText = _estimatedTimeRemaining != null
+        ? 'ETA: ${(_estimatedTimeRemaining!.inMilliseconds / 1000).toStringAsFixed(1)}s'
+        : 'Estimating...';
+
+    return Container(
+      color: const Color(0xFF1E1E2C),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Exporting... ${(_exportProgress * 100).toStringAsFixed(0)}%',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                etaText,
+                style: const TextStyle(color: Colors.deepPurpleAccent),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: _exportProgress > 0 ? _exportProgress : null,
+            color: Colors.deepPurpleAccent,
+            backgroundColor: Colors.white10,
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _cancelExport,
+            icon: const Icon(Icons.cancel, color: Colors.redAccent),
+            label: const Text(
+              'Cancel Export',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActionBar() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: const Color(0xFF141424),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _statusMessage,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: (_inputPath == null || _isProcessing)
+                  ? null
+                  : _processVideo,
+              icon: const Icon(Icons.movie_creation_outlined),
+              label: const Text('Export Video'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.deepPurpleAccent,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

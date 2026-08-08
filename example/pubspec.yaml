@@ -13,6 +13,7 @@ dependencies:
   native_video_editor:
     path: ../
   path_provider: ^2.1.5
+  video_player: ^2.9.2
 
 dev_dependencies:
   flutter_test:
