@@ -1,3 +1,8 @@
+## 0.2.1
+
+* Add GitHub Actions CI/CD workflows for automated pub.dev releases.
+* Code formatting and static analysis improvements.
+
 ## 0.2.0
 
 * Add video export progress reporting callback support (`onProgress` parameter in `processVideo`).
