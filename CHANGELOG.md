@@ -1,3 +1,10 @@
+## 0.3.0
+
+* Add `composeImageWithAudio` API to compose a still image (PNG/JPEG) and audio track into an MP4 video.
+* Add `mergeAudioIntoVideo` API to replace or inject custom background audio into an existing video.
+* Add progress reporting (`onProgress` callback) and cancellation (`cancelProcessVideo`) support across native operations.
+* Overhaul the example app into a full interactive UI video editor with timeline trimming, crop overlays, audio merging, and image-video composition tools.
+
 ## 0.2.1
 
 * Add GitHub Actions CI/CD workflows for automated pub.dev releases.

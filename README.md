@@ -21,6 +21,9 @@ multiple edits in one export.
 | Rotate 0, 90, 180, or 270 degrees | Yes | Yes |
 | Speed adjustment | Yes | Yes |
 | Mute audio | Yes | Yes |
+| Progress reporting & cancellation | Yes | Yes |
+| Compose image + audio into video | Yes | Yes |
+| Merge / replace background audio | Yes | Yes |
 | Thumbnail extraction | Yes | Yes |
 
 ## Installation
@@ -29,7 +32,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  native_video_editor: ^0.1.0
+  native_video_editor: ^0.3.0
 ```
 
 Then run:
@@ -161,6 +164,57 @@ VideoEditRequest(
 Values greater than `1.0` make the output faster. Values less than `1.0` make
 the output slower. Supported values are from `0.25` to `4.0`.
 
+## Progress Reporting & Cancellation
+
+Pass an `onProgress` callback to receive real-time export progress updates (`0.0` to `1.0`). To cancel an ongoing export, call `NativeVideoEditor.cancelProcessVideo`:
+
+```dart
+final resultPath = await NativeVideoEditor.processVideo(
+  request,
+  onProgress: (progress) {
+    print('Export progress: ${(progress * 100).toStringAsFixed(1)}%');
+  },
+);
+
+// Cancel from another UI handler:
+await NativeVideoEditor.cancelProcessVideo(outputPath);
+```
+
+## Image + Audio Composition
+
+Compose a still image (PNG or JPEG) and an audio track into a video frame:
+
+```dart
+final outputPath = await NativeVideoEditor.composeImageWithAudio(
+  ImageVideoComposeRequest(
+    imagePath: imagePath,
+    audioPath: audioPath,
+    outputPath: outputPath,
+    targetWidth: 1080,
+    targetHeight: 1920,
+    audioDurationMs: 15000, // Optional cap in ms
+    frameRate: 30,
+  ),
+  onProgress: (progress) => print('Composing: $progress'),
+);
+```
+
+## Audio Merging into Video
+
+Inject or replace background audio in an existing video:
+
+```dart
+final outputPath = await NativeVideoEditor.mergeAudioIntoVideo(
+  AudioMergeRequest(
+    inputVideoPath: videoPath,
+    audioPath: audioPath,
+    outputPath: outputPath,
+    replaceExistingAudio: true, // Set false to mix streams
+  ),
+  onProgress: (progress) => print('Merging: $progress'),
+);
+```
+
 ## Thumbnail Extraction
 
 Extract a thumbnail frame to a JPEG or PNG file:
@@ -195,7 +249,7 @@ replaced.
 
 ## Example App
 
-This package includes a runnable example project:
+This package includes a runnable, full-featured interactive UI video editor example:
 
 ```sh
 cd example
@@ -203,9 +257,12 @@ flutter pub get
 flutter run
 ```
 
-The example applies trimming, cropping, resizing, rotation, and audio muting in
-one request. It also demonstrates thumbnail extraction with a real file picker
-and app-cache output paths.
+The example features:
+- Interactive timeline trimming slider
+- Visual cropping overlay box with aspect ratio control
+- Live video player preview
+- Real-time export progress tracking and cancellation modal
+- Full support for image+audio video composition and audio merging tools
 
 ## Limitations
 
@@ -214,8 +271,7 @@ and app-cache output paths.
   process them.
 * Long videos can take time to export because processing is done by the native
   platform stack.
-* Watermarks, text overlays, progress callbacks, cancellation, and transcoding
-  controls are planned for later phases.
+* Watermarks, text overlays, and advanced filter effects are planned for later phases.
 
 ## Troubleshooting
 
