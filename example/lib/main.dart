@@ -430,10 +430,7 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
                     icon: Icon(Icons.video_collection),
                     text: 'Result Preview',
                   ),
-                  Tab(
-                    icon: Icon(Icons.add_to_photos_rounded),
-                    text: 'Compose',
-                  ),
+                  Tab(icon: Icon(Icons.add_to_photos_rounded), text: 'Compose'),
                 ],
               )
             : null,

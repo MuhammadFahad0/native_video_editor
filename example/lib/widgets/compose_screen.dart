@@ -48,10 +48,7 @@ class _ComposeScreenState extends State<ComposeScreen>
         Expanded(
           child: TabBarView(
             controller: _tabController,
-            children: const [
-              _ImageComposePane(),
-              _AudioMergePane(),
-            ],
+            children: const [_ImageComposePane(), _AudioMergePane()],
           ),
         ),
       ],
@@ -89,9 +86,7 @@ class _ImageComposePaneState extends State<_ImageComposePane> {
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-    );
+    final result = await FilePicker.platform.pickFiles(type: FileType.image);
     final path = result?.files.single.path;
     if (path == null) return;
     setState(() {
@@ -101,9 +96,7 @@ class _ImageComposePaneState extends State<_ImageComposePane> {
   }
 
   Future<void> _pickAudio() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-    );
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
     final path = result?.files.single.path;
     if (path == null) return;
     setState(() {
@@ -122,7 +115,9 @@ class _ImageComposePaneState extends State<_ImageComposePane> {
     final imagePath = _imagePath;
     final audioPath = _audioPath;
     if (imagePath == null || audioPath == null) {
-      setState(() => _status = 'Please select both an image and an audio file.');
+      setState(
+        () => _status = 'Please select both an image and an audio file.',
+      );
       return;
     }
 
@@ -261,8 +256,8 @@ class _ImageComposePaneState extends State<_ImageComposePane> {
           FilledButton.icon(
             onPressed:
                 (_isProcessing || _imagePath == null || _audioPath == null)
-                    ? null
-                    : _compose,
+                ? null
+                : _compose,
             icon: const Icon(Icons.movie_creation_outlined),
             label: const Text('Compose to Video'),
             style: FilledButton.styleFrom(
@@ -351,7 +346,16 @@ class _AudioMergePane extends StatefulWidget {
 
 class _AudioMergePaneState extends State<_AudioMergePane> {
   static const _supportedVideoExtensions = <String>{
-    '3gp', 'avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'webm',
+    '3gp',
+    'avi',
+    'm4v',
+    'mkv',
+    'mov',
+    'mp4',
+    'mpeg',
+    'mpg',
+    'ts',
+    'webm',
   };
 
   String? _videoPath;
@@ -390,9 +394,7 @@ class _AudioMergePaneState extends State<_AudioMergePane> {
   }
 
   Future<void> _pickAudio() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-    );
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
     final path = result?.files.single.path;
     if (path == null) return;
     setState(() {
@@ -516,8 +518,9 @@ class _AudioMergePaneState extends State<_AudioMergePane> {
             ),
             value: _replaceExistingAudio,
             activeTrackColor: Colors.purpleAccent,
-            onChanged:
-                _isProcessing ? null : (v) => setState(() => _replaceExistingAudio = v),
+            onChanged: _isProcessing
+                ? null
+                : (v) => setState(() => _replaceExistingAudio = v),
           ),
           const SizedBox(height: 8),
 
@@ -525,8 +528,8 @@ class _AudioMergePaneState extends State<_AudioMergePane> {
           FilledButton.icon(
             onPressed:
                 (_isProcessing || _videoPath == null || _audioPath == null)
-                    ? null
-                    : _merge,
+                ? null
+                : _merge,
             icon: const Icon(Icons.merge_type_rounded),
             label: const Text('Merge Audio into Video'),
             style: FilledButton.styleFrom(

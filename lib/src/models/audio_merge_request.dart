@@ -61,11 +61,7 @@ class AudioMergeRequest {
       throw ArgumentError.value(audioPath, 'audioPath', 'Must not be empty.');
     }
     if (outputPath.trim().isEmpty) {
-      throw ArgumentError.value(
-        outputPath,
-        'outputPath',
-        'Must not be empty.',
-      );
+      throw ArgumentError.value(outputPath, 'outputPath', 'Must not be empty.');
     }
     if (inputVideoPath.trim() == outputPath.trim()) {
       throw ArgumentError(

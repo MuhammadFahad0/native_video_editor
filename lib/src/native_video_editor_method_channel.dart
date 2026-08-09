@@ -68,9 +68,7 @@ class MethodChannelNativeVideoEditor extends NativeVideoEditorPlatform {
   }
 
   @override
-  Future<String> composeImageWithAudio(
-    ImageVideoComposeRequest request,
-  ) async {
+  Future<String> composeImageWithAudio(ImageVideoComposeRequest request) async {
     final result = await methodChannel.invokeMethod<String>(
       'composeImageWithAudio',
       request.toMap(),
@@ -101,4 +99,3 @@ class MethodChannelNativeVideoEditor extends NativeVideoEditorPlatform {
     return result;
   }
 }
-
