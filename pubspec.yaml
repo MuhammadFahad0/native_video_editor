@@ -9,6 +9,8 @@ topics:
   - media
   - android
   - ios
+  - macos
+  - windows
 
 environment:
   sdk: ^3.8.0
@@ -33,3 +35,7 @@ flutter:
         pluginClass: NativeVideoEditorPlugin
       ios:
         pluginClass: NativeVideoEditorPlugin
+      macos:
+        pluginClass: NativeVideoEditorPlugin
+      windows:
+        pluginClass: NativeVideoEditorPluginCApi

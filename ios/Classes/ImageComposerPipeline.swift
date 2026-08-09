@@ -1,7 +1,17 @@
 import AVFoundation
 import CoreVideo
+
+#if canImport(FlutterMacOS)
+import FlutterMacOS
+#else
 import Flutter
+#endif
+
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Encodes a still image + audio file into an MP4 video using AVFoundation.
 ///
@@ -51,10 +61,24 @@ final class ImageComposerPipeline {
     completion: @escaping (Result<String, Error>) -> Void
   ) throws {
     // ── 1. Load image ──────────────────────────────────────────────────────
-    guard let uiImage = UIImage(contentsOfFile: request.imagePath),
-          let cgImage = uiImage.cgImage else {
+    let cgImage: CGImage?
+    #if canImport(UIKit)
+    cgImage = UIImage(contentsOfFile: request.imagePath)?.cgImage
+    #elseif canImport(AppKit)
+    if let nsImage = NSImage(contentsOfFile: request.imagePath) {
+      var rect = CGRect(origin: .zero, size: nsImage.size)
+      cgImage = nsImage.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+    } else {
+      cgImage = nil
+    }
+    #else
+    cgImage = nil
+    #endif
+
+    guard let loadedCGImage = cgImage else {
       throw ImageComposerError.invalidImage
     }
+
 
     // ── 2. Resolve the audio asset and duration ────────────────────────────
     let audioURL = URL(fileURLWithPath: request.audioPath)
@@ -138,7 +162,7 @@ final class ImageComposerPipeline {
     reader.add(audioReaderOutput)
 
     // ── 6. Build the pixel buffer from the image ───────────────────────────
-    let pixelBuffer = try makePixelBuffer(from: cgImage, width: width, height: height)
+    let pixelBuffer = try makePixelBuffer(from: loadedCGImage, width: width, height: height)
 
     // ── 7. Write ───────────────────────────────────────────────────────────
     writer.startWriting()

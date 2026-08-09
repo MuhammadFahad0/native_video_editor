@@ -1,5 +1,9 @@
 import AVFoundation
+#if canImport(FlutterMacOS)
+import FlutterMacOS
+#else
 import Flutter
+#endif
 
 /// Merges an audio track into an existing video file using AVFoundation.
 ///

@@ -1,0 +1,1 @@
+../../ios/Classes/ImageComposerPipeline.swift

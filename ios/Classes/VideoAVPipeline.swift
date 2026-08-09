@@ -1,7 +1,17 @@
 import AVFoundation
 import Foundation
-import UIKit
+
+#if canImport(FlutterMacOS)
+import FlutterMacOS
+#else
 import Flutter
+#endif
+
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 final class VideoAVPipeline {
   private let channel: FlutterMethodChannel
@@ -182,14 +192,24 @@ final class VideoAVPipeline {
         generator.appliesPreferredTrackTransform = true
         let time = CMTime(value: request.positionMs, timescale: 1000)
         let image = try generator.copyCGImage(at: time, actualTime: nil)
-        let uiImage = UIImage(cgImage: image)
-
         let data: Data?
+        #if canImport(UIKit)
+        let uiImage = UIImage(cgImage: image)
         if outputURL.pathExtension.lowercased() == "png" {
           data = uiImage.pngData()
         } else {
           data = uiImage.jpegData(compressionQuality: CGFloat(request.quality) / 100.0)
         }
+        #elseif canImport(AppKit)
+        let rep = NSBitmapImageRep(cgImage: image)
+        if outputURL.pathExtension.lowercased() == "png" {
+          data = rep.representation(using: .png, properties: [:])
+        } else {
+          data = rep.representation(using: .jpeg, properties: [.compressionFactor: NSNumber(value: Float(request.quality) / 100.0)])
+        }
+        #else
+        data = nil
+        #endif
 
         guard let data = data else {
           throw VideoAVPipelineError.thumbnailEncodingFailed

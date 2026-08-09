@@ -1,5 +1,14 @@
+#if canImport(FlutterMacOS)
+import FlutterMacOS
+#else
 import Flutter
+#endif
+
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// A simple type-erasure so we can store different pipeline types in the same
 /// dictionary and call cancel() on any of them uniformly.
@@ -16,9 +25,14 @@ public class NativeVideoEditorPlugin: NSObject, FlutterPlugin {
   private let lock = NSLock()
 
   public static func register(with registrar: FlutterPluginRegistrar) {
+    #if canImport(FlutterMacOS)
+    let messenger = registrar.messenger
+    #else
+    let messenger = registrar.messenger()
+    #endif
     let channel = FlutterMethodChannel(
       name: "native_video_editor",
-      binaryMessenger: registrar.messenger()
+      binaryMessenger: messenger
     )
     let instance = NativeVideoEditorPlugin()
     instance.channel = channel
