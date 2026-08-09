@@ -10,7 +10,15 @@ add_library(${PLUGIN_NAME} SHARED
   "native_video_editor_plugin.cpp"
 )
 
-apply_standard_cpp_compiler_flags(${PLUGIN_NAME})
+target_compile_options(${PLUGIN_NAME} PRIVATE
+  /W4       # Warning level 4
+  /WX-      # Don't treat warnings as errors
+  /wd4100   # Suppress unreferenced formal parameter
+  /wd4206   # Suppress empty translation unit
+  /wd4245   # Suppress signed/unsigned mismatch
+  /wd4267   # Suppress size_t conversion
+  /wd4819   # Suppress code page warning
+)
 
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 

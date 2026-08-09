@@ -86,7 +86,12 @@ class _ImageComposePaneState extends State<_ImageComposePane> {
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.image);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: false,
+      withReadStream: false,
+    );
     final path = result?.files.single.path;
     if (path == null) return;
     setState(() {
@@ -96,7 +101,12 @@ class _ImageComposePaneState extends State<_ImageComposePane> {
   }
 
   Future<void> _pickAudio() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.audio,
+      allowMultiple: false,
+      withData: false,
+      withReadStream: false,
+    );
     final path = result?.files.single.path;
     if (path == null) return;
     setState(() {
@@ -376,8 +386,13 @@ class _AudioMergePaneState extends State<_AudioMergePane> {
 
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: _supportedVideoExtensions.toList(),
+      // FileType.custom with allowedExtensions has a Windows bug where the
+      // native IFileOpenDialog silently returns null after file selection.
+      // Use FileType.any and validate the extension in Dart instead.
+      type: FileType.any,
+      allowMultiple: false,
+      withData: false,
+      withReadStream: false,
     );
     final pickedFile = result?.files.single;
     final path = pickedFile?.path;
@@ -394,7 +409,12 @@ class _AudioMergePaneState extends State<_AudioMergePane> {
   }
 
   Future<void> _pickAudio() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.audio,
+      allowMultiple: false,
+      withData: false,
+      withReadStream: false,
+    );
     final path = result?.files.single.path;
     if (path == null) return;
     setState(() {

@@ -7,24 +7,26 @@ platform video stack:
 
 * Android: AndroidX Media3 Transformer
 * iOS: AVFoundation
+* macOS: AVFoundation
+* Windows: Windows Media Editing (`Windows.Media.Editing.MediaComposition`)
 
 The first release focuses on a unified native processing pipeline that can apply
 multiple edits in one export.
 
 ## Features
 
-| Feature | Android | iOS |
-| --- | --- | --- |
-| Trim start/end time | Yes | Yes |
-| Normalized crop | Yes | Yes |
-| Resize / scale output | Yes | Yes |
-| Rotate 0, 90, 180, or 270 degrees | Yes | Yes |
-| Speed adjustment | Yes | Yes |
-| Mute audio | Yes | Yes |
-| Progress reporting & cancellation | Yes | Yes |
-| Compose image + audio into video | Yes | Yes |
-| Merge / replace background audio | Yes | Yes |
-| Thumbnail extraction | Yes | Yes |
+| Feature | Android | iOS | macOS | Windows |
+| --- | --- | --- | --- | --- |
+| Trim start/end time | Yes | Yes | Yes | Yes |
+| Normalized crop | Yes | Yes | Yes | Yes |
+| Resize / scale output | Yes | Yes | Yes | Yes |
+| Rotate 0, 90, 180, or 270 degrees | Yes | Yes | Yes | Yes |
+| Speed adjustment | Yes | Yes | Yes | Yes |
+| Mute audio | Yes | Yes | Yes | Yes |
+| Progress reporting & cancellation | Yes | Yes | Yes | Yes |
+| Compose image + audio into video | Yes | Yes | Yes | Yes |
+| Merge / replace background audio | Yes | Yes | Yes | Yes |
+| Thumbnail extraction | Yes | Yes | Yes | Yes |
 
 ## Installation
 
@@ -32,7 +34,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  native_video_editor: ^0.3.0
+  native_video_editor: ^0.4.0
 ```
 
 Then run:
@@ -49,11 +51,18 @@ flutter pub get
 * Native backend: AndroidX Media3 Transformer
 * The app must provide local file paths that Android can read and write.
 
-### iOS
+### iOS & macOS
 
-* Minimum deployment target: iOS 13.0
+* Minimum iOS deployment target: 13.0
+* Minimum macOS deployment target: 10.15
 * Native backend: AVFoundation
 * The app must provide sandbox-accessible local file paths.
+
+### Windows
+
+* Minimum OS version: Windows 10 (version 1809+ / build 17763+)
+* Native backend: C++/WinRT (`Windows.Media.Editing.MediaComposition`)
+* The app must provide valid local file system paths.
 
 ## Basic Usage
 
@@ -266,7 +275,6 @@ The example features:
 
 ## Limitations
 
-* Only Android and iOS are supported.
 * Unsupported source codecs can fail if the platform encoder/decoder cannot
   process them.
 * Long videos can take time to export because processing is done by the native

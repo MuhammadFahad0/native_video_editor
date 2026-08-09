@@ -7,6 +7,7 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Media.Editing.h>
+#include <winrt/Windows.Media.Effects.h>
 #include <winrt/Windows.Media.Transcoding.h>
 #include <winrt/Windows.Media.MediaProperties.h>
 #include <winrt/Windows.Media.Core.h>
@@ -16,6 +17,7 @@
 
 #include <memory>
 #include <mutex>
+#include <algorithm>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -23,6 +25,7 @@
 using namespace winrt;
 using namespace Windows::Foundation;
 using namespace Windows::Media::Editing;
+using namespace Windows::Media::Effects;
 using namespace Windows::Media::MediaProperties;
 using namespace Windows::Media::Transcoding;
 using namespace Windows::Storage;
@@ -47,6 +50,11 @@ std::string ToString(const std::wstring& wstr) {
   std::string str(size_needed, 0);
   WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &str[0], size_needed, NULL, NULL);
   return str;
+}
+
+// Overload: convert winrt::hstring directly
+std::string ToString(const winrt::hstring& hstr) {
+  return ToString(std::wstring(hstr));
 }
 
 const flutter::EncodableValue* GetValue(const flutter::EncodableMap& map, const std::string& key) {
@@ -98,6 +106,22 @@ bool GetBool(const flutter::EncodableMap& map, const std::string& key, bool defa
   return default_val;
 }
 
+// Creates a real writable file at a filesystem path. CreateStreamedFileFromUriAsync
+// is for read-only, URI-backed virtual files and cannot be used as a render target.
+StorageFile CreateOrReplaceOutputFile(const std::string& output_path) {
+  const std::wstring full_path = ToWString(output_path);
+  const size_t last_slash = full_path.find_last_of(L"\\/");
+  if (last_slash == std::wstring::npos || last_slash + 1 >= full_path.size()) {
+    throw hresult_invalid_argument(L"Output path must contain a folder and file name.");
+  }
+
+  const std::wstring folder_path = full_path.substr(0, last_slash);
+  const std::wstring file_name = full_path.substr(last_slash + 1);
+  StorageFolder folder = StorageFolder::GetFolderFromPathAsync(folder_path).get();
+  return folder.CreateFileAsync(
+      file_name, CreationCollisionOption::ReplaceExisting).get();
+}
+
 }  // namespace
 
 void NativeVideoEditorPlugin::RegisterWithRegistrar(
@@ -120,7 +144,8 @@ void NativeVideoEditorPlugin::RegisterWithRegistrar(
 
 NativeVideoEditorPlugin::NativeVideoEditorPlugin(flutter::PluginRegistrarWindows *registrar)
     : registrar_(registrar) {
-  winrt::init_apartment();
+  // Do NOT call winrt::init_apartment() here — the Flutter UI thread already
+  // has a COM apartment (STA). WinRT is initialized per-thread in each worker.
 }
 
 NativeVideoEditorPlugin::~NativeVideoEditorPlugin() {}
@@ -169,32 +194,48 @@ void NativeVideoEditorPlugin::ProcessVideo(
   }
 
   std::thread([this, input_path, output_path, trim_start_ms, trim_end_ms, target_width, target_height, rotation_degrees, speed_multiplier, mute_audio, cancelled, res = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result))]() mutable {
+    winrt::init_apartment();  // Initialize WinRT MTA on this worker thread
     try {
       StorageFile input_file = StorageFile::GetFileFromPathAsync(ToWString(input_path)).get();
       MediaClip clip = MediaClip::CreateFromFileAsync(input_file).get();
 
       if (trim_start_ms >= 0) {
-        clip.TrimStartTime(std::chrono::milliseconds(trim_start_ms));
+        clip.TrimTimeFromStart(std::chrono::milliseconds(trim_start_ms));
       }
       if (trim_end_ms >= 0) {
-        clip.TrimEndTime(std::chrono::milliseconds(trim_end_ms));
+        const auto original_duration_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                clip.OriginalDuration()).count();
+        const auto trim_from_end_ms =
+            std::max<int64_t>(0, original_duration_ms - trim_end_ms);
+        clip.TrimTimeFromEnd(std::chrono::milliseconds(trim_from_end_ms));
       }
       if (mute_audio) {
         clip.Volume(0.0);
       }
 
+      if (rotation_degrees != 0) {
+        VideoTransformEffectDefinition transform;
+        switch (rotation_degrees) {
+          case 90:
+            transform.Rotation(MediaRotation::Clockwise90Degrees);
+            break;
+          case 180:
+            transform.Rotation(MediaRotation::Clockwise180Degrees);
+            break;
+          case 270:
+            transform.Rotation(MediaRotation::Clockwise270Degrees);
+            break;
+          default:
+            throw hresult_invalid_argument(L"Unsupported rotation angle.");
+        }
+        clip.VideoEffectDefinitions().Append(transform);
+      }
+
       MediaComposition comp;
       comp.Clips().Append(clip);
 
-      // Create output file parent directory if needed
-      std::wstring w_output = ToWString(output_path);
-      size_t last_slash = w_output.find_last_of(L"\\/");
-      if (last_slash != std::wstring::npos) {
-        std::wstring dir_path = w_output.substr(0, last_slash);
-        StorageFolder::GetFolderFromPathAsync(dir_path).get();
-      }
-
-      StorageFile output_file = StorageFile::CreateStreamedFileFromUriAsync(ToWString(output_path), Uri(ToWString(output_path)), nullptr).get();
+      StorageFile output_file = CreateOrReplaceOutputFile(output_path);
       MediaEncodingProfile profile = MediaEncodingProfile::CreateMp4(VideoEncodingQuality::HD1080p);
 
       if (target_width > 0 && target_height > 0) {
@@ -202,7 +243,8 @@ void NativeVideoEditorPlugin::ProcessVideo(
         profile.Video().Height(target_height);
       }
 
-      auto async_op = comp.RenderToFileAsync(output_file, MediaVideoProcessingMode::Buffer, profile);
+      // FIX: RenderToFileAsync overload uses MediaTrimmingPreference, not MediaVideoProcessingMode
+      auto async_op = comp.RenderToFileAsync(output_file, MediaTrimmingPreference::Precise, profile);
       async_op.Progress([this, output_path](auto const& asyncInfo, double progress) {
         if (channel_) {
           flutter::EncodableMap args;
@@ -229,7 +271,8 @@ void NativeVideoEditorPlugin::ProcessVideo(
         std::lock_guard<std::mutex> lock(mutex_);
         active_cancellations_.erase(output_path);
       }
-      res->Error("processing_failed", ToString(ex.message()));
+      // FIX: ex.message() returns winrt::hstring, convert via std::wstring
+      res->Error("processing_failed", ToString(std::wstring(ex.message())));
     } catch (...) {
       {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -263,6 +306,7 @@ void NativeVideoEditorPlugin::ExtractThumbnail(
   int32_t quality = GetInt32(args, "quality", 90);
 
   std::thread([input_path, output_path, position_ms, quality, res = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result))]() mutable {
+    winrt::init_apartment();  // Initialize WinRT MTA on this worker thread
     try {
       StorageFile input_file = StorageFile::GetFileFromPathAsync(ToWString(input_path)).get();
       MediaClip clip = MediaClip::CreateFromFileAsync(input_file).get();
@@ -274,13 +318,14 @@ void NativeVideoEditorPlugin::ExtractThumbnail(
           0, 0,
           VideoFramePrecision::NearestFrame).get();
 
-      StorageFile output_file = StorageFile::CreateStreamedFileFromUriAsync(ToWString(output_path), Uri(ToWString(output_path)), nullptr).get();
+      StorageFile output_file = CreateOrReplaceOutputFile(output_path);
       IRandomAccessStream output_stream = output_file.OpenAsync(FileAccessMode::ReadWrite).get();
 
       BitmapDecoder decoder = BitmapDecoder::CreateAsync(stream).get();
       SoftwareBitmap bitmap = decoder.GetSoftwareBitmapAsync().get();
 
-      Guid encoder_id = BitmapEncoder::JpegEncoderId();
+      // FIX: Guid is winrt::guid; BitmapEncoder::JpegEncoderId() returns winrt::guid
+      winrt::guid encoder_id = BitmapEncoder::JpegEncoderId();
       if (output_path.length() >= 4 && output_path.substr(output_path.length() - 4) == ".png") {
         encoder_id = BitmapEncoder::PngEncoderId();
       }
@@ -298,7 +343,7 @@ void NativeVideoEditorPlugin::ExtractThumbnail(
       encoder.FlushAsync().get();
       res->Success(flutter::EncodableValue(output_path));
     } catch (const hresult_error& ex) {
-      res->Error("thumbnail_failed", ToString(ex.message()));
+      res->Error("thumbnail_failed", ToString(std::wstring(ex.message())));
     } catch (...) {
       res->Error("thumbnail_failed", "An error occurred during thumbnail extraction.");
     }
@@ -314,6 +359,7 @@ void NativeVideoEditorPlugin::ComposeImageWithAudio(
   int64_t audio_duration_ms = GetInt64(args, "audioDurationMs", 5000);
 
   std::thread([image_path, audio_path, output_path, audio_duration_ms, res = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result))]() mutable {
+    winrt::init_apartment();  // Initialize WinRT MTA on this worker thread
     try {
       StorageFile image_file = StorageFile::GetFileFromPathAsync(ToWString(image_path)).get();
       StorageFile audio_file = StorageFile::GetFileFromPathAsync(ToWString(audio_path)).get();
@@ -325,13 +371,14 @@ void NativeVideoEditorPlugin::ComposeImageWithAudio(
       comp.Clips().Append(image_clip);
       comp.BackgroundAudioTracks().Append(audio_track);
 
-      StorageFile output_file = StorageFile::CreateStreamedFileFromUriAsync(ToWString(output_path), Uri(ToWString(output_path)), nullptr).get();
+      StorageFile output_file = CreateOrReplaceOutputFile(output_path);
       MediaEncodingProfile profile = MediaEncodingProfile::CreateMp4(VideoEncodingQuality::HD1080p);
 
-      comp.RenderToFileAsync(output_file, MediaVideoProcessingMode::Buffer, profile).get();
+      // FIX: use MediaTrimmingPreference::Precise instead of MediaVideoProcessingMode::Buffer
+      comp.RenderToFileAsync(output_file, MediaTrimmingPreference::Precise, profile).get();
       res->Success(flutter::EncodableValue(output_path));
     } catch (const hresult_error& ex) {
-      res->Error("compose_failed", ToString(ex.message()));
+      res->Error("compose_failed", ToString(std::wstring(ex.message())));
     } catch (...) {
       res->Error("compose_failed", "An error occurred during image video composition.");
     }
@@ -347,6 +394,7 @@ void NativeVideoEditorPlugin::MergeAudioIntoVideo(
   bool replace_existing_audio = GetBool(args, "replaceExistingAudio", true);
 
   std::thread([input_video_path, audio_path, output_path, replace_existing_audio, res = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result))]() mutable {
+    winrt::init_apartment();  // Initialize WinRT MTA on this worker thread
     try {
       StorageFile video_file = StorageFile::GetFileFromPathAsync(ToWString(input_video_path)).get();
       StorageFile audio_file = StorageFile::GetFileFromPathAsync(ToWString(audio_path)).get();
@@ -362,13 +410,14 @@ void NativeVideoEditorPlugin::MergeAudioIntoVideo(
       comp.Clips().Append(video_clip);
       comp.BackgroundAudioTracks().Append(audio_track);
 
-      StorageFile output_file = StorageFile::CreateStreamedFileFromUriAsync(ToWString(output_path), Uri(ToWString(output_path)), nullptr).get();
+      StorageFile output_file = CreateOrReplaceOutputFile(output_path);
       MediaEncodingProfile profile = MediaEncodingProfile::CreateMp4(VideoEncodingQuality::HD1080p);
 
-      comp.RenderToFileAsync(output_file, MediaVideoProcessingMode::Buffer, profile).get();
+      // FIX: use MediaTrimmingPreference::Precise instead of MediaVideoProcessingMode::Buffer
+      comp.RenderToFileAsync(output_file, MediaTrimmingPreference::Precise, profile).get();
       res->Success(flutter::EncodableValue(output_path));
     } catch (const hresult_error& ex) {
-      res->Error("merge_failed", ToString(ex.message()));
+      res->Error("merge_failed", ToString(std::wstring(ex.message())));
     } catch (...) {
       res->Error("merge_failed", "An error occurred during audio merge.");
     }

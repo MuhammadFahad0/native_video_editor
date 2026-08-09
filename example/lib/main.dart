@@ -131,12 +131,31 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
   Future<void> _pickVideo() async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: _supportedVideoExtensions.toList(),
+        // FileType.custom with allowedExtensions has a Windows bug where the
+        // native IFileOpenDialog silently returns null after file selection.
+        // Use FileType.any and validate the extension in Dart instead.
+        type: FileType.any,
+        allowMultiple: false,
+        withData: false,
+        withReadStream: false,
       );
-      final pickedFile = result?.files.single;
+      final pickedFile = result?.files.firstOrNull;
       final path = pickedFile?.path;
-      if (path == null) return;
+
+      // Show explicit feedback for every case instead of silent returns.
+      if (result == null) {
+        // User cancelled the picker — that's fine, do nothing.
+        return;
+      }
+      if (path == null || path.isEmpty) {
+        // file_picker returned a result but path is null — this is a bug.
+        setState(() {
+          _statusMessage =
+              'Could not get file path. '
+              'Try moving the file out of a system or protected folder.';
+        });
+        return;
+      }
 
       // Some Android document providers do not honor the requested MIME or
       // extension filter. Reject their non-video results before ExoPlayer tries
@@ -164,11 +183,43 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
         }
       }
 
+      // Show loading feedback immediately so the user knows something is happening.
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Loading video, please wait…';
+          _isProcessing = true;
+        });
+      }
+
       await _inputController?.dispose();
       await _outputController?.dispose();
 
       final controller = _makeController(path);
-      await controller.initialize();
+
+      // On Windows, VideoPlayerController.initialize() can hang indefinitely
+      // when the codec is missing (HEVC, VP9, some MKV/WebM variants).
+      // Guard with a timeout so we show a clear error instead of freezing.
+      try {
+        await controller.initialize().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            controller.dispose();
+            throw Exception(
+              'Timed out loading video. On Windows, make sure the required '
+              'codec is installed (e.g. "HEVC Video Extensions" from the '
+              'Microsoft Store), or convert the file to H.264 MP4 first.',
+            );
+          },
+        );
+      } catch (initErr) {
+        if (mounted) {
+          setState(() {
+            _isProcessing = false;
+            _statusMessage = 'Failed to load video: $initErr';
+          });
+        }
+        return;
+      }
 
       final duration = controller.value.duration;
 
@@ -193,6 +244,7 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
         _muteAudio = false;
         _targetWidth = null;
         _targetHeight = null;
+        _isProcessing = false;
         _statusMessage =
             'Video loaded: ${controller.value.size.width.toInt()}x${controller.value.size.height.toInt()}';
       });
@@ -210,6 +262,7 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
+          _isProcessing = false;
           _statusMessage = 'Failed to load video: $e';
         });
       }

@@ -1,3 +1,9 @@
+## 0.4.0
+
+* Add desktop platform support for macOS (AVFoundation) and Windows (`Windows.Media.Editing.MediaComposition`).
+* Fix Windows C++ native rendering compilation, thread apartment initialization, and precise trimming rendering API usage.
+* Update example app with desktop video player support (`video_player_win`).
+
 ## 0.3.0
 
 * Add `composeImageWithAudio` API to compose a still image (PNG/JPEG) and audio track into an MP4 video.

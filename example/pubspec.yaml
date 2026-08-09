@@ -14,6 +14,9 @@ dependencies:
     path: ../
   path_provider: ^2.1.5
   video_player: ^2.9.2
+  # The official video_player package has no Windows implementation.
+  # This federated backend lets the existing VideoPlayerController API work.
+  video_player_win: ^3.2.2
 
 dev_dependencies:
   flutter_test:
