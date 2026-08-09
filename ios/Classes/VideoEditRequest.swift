@@ -143,3 +143,92 @@ enum VideoEditRequestError: LocalizedError {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// New request types for composeImageWithAudio and mergeAudioIntoVideo
+// ---------------------------------------------------------------------------
+
+struct ImageComposeRequest {
+  let imagePath: String
+  let audioPath: String
+  let outputPath: String
+  let targetWidth: Int
+  let targetHeight: Int
+  /// `nil` means "use the full audio duration".
+  let audioDurationMs: Int64?
+  let frameRate: Int
+
+  init(_ map: [String: Any]) throws {
+    guard let imagePath = map["imagePath"] as? String, !imagePath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("imagePath is required.")
+    }
+    guard let audioPath = map["audioPath"] as? String, !audioPath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("audioPath is required.")
+    }
+    guard let outputPath = map["outputPath"] as? String, !outputPath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("outputPath is required.")
+    }
+    guard let targetWidth = (map["targetWidth"] as? NSNumber)?.intValue else {
+      throw VideoEditRequestError.invalid("targetWidth is required.")
+    }
+    guard let targetHeight = (map["targetHeight"] as? NSNumber)?.intValue else {
+      throw VideoEditRequestError.invalid("targetHeight is required.")
+    }
+
+    if targetWidth <= 0 || targetWidth % 2 != 0 {
+      throw VideoEditRequestError.invalid("targetWidth must be a positive even number.")
+    }
+    if targetHeight <= 0 || targetHeight % 2 != 0 {
+      throw VideoEditRequestError.invalid("targetHeight must be a positive even number.")
+    }
+
+    let audioDurationMs = (map["audioDurationMs"] as? NSNumber)?.int64Value
+    if let d = audioDurationMs, d <= 0 {
+      throw VideoEditRequestError.invalid("audioDurationMs must be a positive integer.")
+    }
+
+    let frameRate = (map["frameRate"] as? NSNumber)?.intValue ?? 30
+    if frameRate < 1 || frameRate > 120 {
+      throw VideoEditRequestError.invalid("frameRate must be between 1 and 120.")
+    }
+
+    self.imagePath = imagePath
+    self.audioPath = audioPath
+    self.outputPath = outputPath
+    self.targetWidth = targetWidth
+    self.targetHeight = targetHeight
+    self.audioDurationMs = audioDurationMs
+    self.frameRate = frameRate
+  }
+}
+
+struct AudioMergeRequest {
+  let inputVideoPath: String
+  let audioPath: String
+  let outputPath: String
+  let replaceExistingAudio: Bool
+
+  init(_ map: [String: Any]) throws {
+    guard let inputVideoPath = map["inputVideoPath"] as? String, !inputVideoPath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("inputVideoPath is required.")
+    }
+    guard let audioPath = map["audioPath"] as? String, !audioPath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("audioPath is required.")
+    }
+    guard let outputPath = map["outputPath"] as? String, !outputPath.trimmingCharacters(in: .whitespaces).isEmpty else {
+      throw VideoEditRequestError.invalid("outputPath is required.")
+    }
+    if URL(fileURLWithPath: inputVideoPath).standardizedFileURL == URL(fileURLWithPath: outputPath).standardizedFileURL {
+      throw VideoEditRequestError.invalid("inputVideoPath and outputPath must be different files.")
+    }
+    if URL(fileURLWithPath: audioPath).standardizedFileURL == URL(fileURLWithPath: outputPath).standardizedFileURL {
+      throw VideoEditRequestError.invalid("audioPath and outputPath must be different files.")
+    }
+
+    self.inputVideoPath = inputVideoPath
+    self.audioPath = audioPath
+    self.outputPath = outputPath
+    self.replaceExistingAudio = (map["replaceExistingAudio"] as? Bool) ?? true
+  }
+}
+

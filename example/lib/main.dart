@@ -6,6 +6,7 @@ import 'package:native_video_editor/native_video_editor.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
+import 'widgets/compose_screen.dart';
 import 'widgets/interactive_crop_overlay.dart';
 import 'widgets/timeline_trim_slider.dart';
 
@@ -48,6 +49,19 @@ class VideoEditorHomeScreen extends StatefulWidget {
 
 class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
     with SingleTickerProviderStateMixin {
+  static const _supportedVideoExtensions = <String>{
+    '3gp',
+    'avi',
+    'm4v',
+    'mkv',
+    'mov',
+    'mp4',
+    'mpeg',
+    'mpg',
+    'ts',
+    'webm',
+  };
+
   String? _inputPath;
   String? _outputPath;
   String? _thumbnailPath;
@@ -87,7 +101,7 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -98,54 +112,108 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
     super.dispose();
   }
 
+  /// Returns a [VideoPlayerController] that works for both plain filesystem
+  /// paths and Android content:// URIs returned by FilePicker / system picker.
+  VideoPlayerController _makeController(String path) {
+    if (path.startsWith('content://')) {
+      return VideoPlayerController.contentUri(Uri.parse(path));
+    }
+    return VideoPlayerController.file(File(path));
+  }
+
+  /// Ensures the native plugin receives a usable path.
+  /// For content:// URIs, the native Android layer's parseUri() helper
+  /// resolves them correctly via ContentResolver, so we pass them as-is.
+  Future<String> _resolveInputPath(String path) async {
+    return path;
+  }
+
   Future<void> _pickVideo() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.video);
-    final path = result?.files.single.path;
-    if (path == null) return;
-
-    await _inputController?.dispose();
-    await _outputController?.dispose();
-
-    final controller = VideoPlayerController.file(File(path));
-    await controller.initialize();
-
-    final duration = controller.value.duration;
-
-    setState(() {
-      _inputPath = path;
-      _outputPath = null;
-      _thumbnailPath = null;
-      _outputController = null;
-      _inputController = controller;
-      _videoDuration = duration;
-      _trimStart = Duration.zero;
-      _trimEnd = duration;
-      _currentPosition = Duration.zero;
-      _cropRect = const VideoCropRect(
-        left: 0.0,
-        top: 0.0,
-        width: 1.0,
-        height: 1.0,
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: _supportedVideoExtensions.toList(),
       );
-      _rotationDegrees = 0;
-      _speedMultiplier = 1.0;
-      _muteAudio = false;
-      _targetWidth = null;
-      _targetHeight = null;
-      _statusMessage =
-          'Video loaded: ${controller.value.size.width.toInt()}x${controller.value.size.height.toInt()}';
-    });
+      final pickedFile = result?.files.single;
+      final path = pickedFile?.path;
+      if (path == null) return;
 
-    controller.addListener(() {
-      if (mounted && controller.value.isPlaying) {
+      // Some Android document providers do not honor the requested MIME or
+      // extension filter. Reject their non-video results before ExoPlayer tries
+      // to parse them and reports an opaque UnrecognizedInputFormatException.
+      final extension = (pickedFile?.extension ?? '').toLowerCase();
+      if (!_supportedVideoExtensions.contains(extension)) {
+        if (mounted) {
+          setState(() {
+            _statusMessage =
+                'Unsupported file "${pickedFile?.name}". Please select a video.';
+          });
+        }
+        return;
+      }
+
+      // For plain file paths, validate that the file exists and is non-empty.
+      // For content:// URIs we skip this check and let the controller handle it.
+      if (!path.startsWith('content://')) {
+        final file = File(path);
+        if (!await file.exists() || (await file.length()) == 0) {
+          setState(() {
+            _statusMessage = 'Selected file is empty or invalid.';
+          });
+          return;
+        }
+      }
+
+      await _inputController?.dispose();
+      await _outputController?.dispose();
+
+      final controller = _makeController(path);
+      await controller.initialize();
+
+      final duration = controller.value.duration;
+
+      setState(() {
+        _inputPath = path;
+        _outputPath = null;
+        _thumbnailPath = null;
+        _outputController = null;
+        _inputController = controller;
+        _videoDuration = duration;
+        _trimStart = Duration.zero;
+        _trimEnd = duration;
+        _currentPosition = Duration.zero;
+        _cropRect = const VideoCropRect(
+          left: 0.0,
+          top: 0.0,
+          width: 1.0,
+          height: 1.0,
+        );
+        _rotationDegrees = 0;
+        _speedMultiplier = 1.0;
+        _muteAudio = false;
+        _targetWidth = null;
+        _targetHeight = null;
+        _statusMessage =
+            'Video loaded: ${controller.value.size.width.toInt()}x${controller.value.size.height.toInt()}';
+      });
+
+      controller.addListener(() {
+        if (mounted && controller.value.isPlaying) {
+          setState(() {
+            _currentPosition = controller.value.position;
+          });
+        }
+      });
+
+      controller.setLooping(true);
+      controller.play();
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _currentPosition = controller.value.position;
+          _statusMessage = 'Failed to load video: $e';
         });
       }
-    });
-
-    controller.setLooping(true);
-    controller.play();
+    }
   }
 
   void _seekTo(Duration position) {
@@ -191,8 +259,11 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
   }
 
   Future<void> _processVideo() async {
-    final inputPath = _inputPath;
-    if (inputPath == null) return;
+    final rawInputPath = _inputPath;
+    if (rawInputPath == null) return;
+
+    // Resolve content:// URIs to a real filesystem path for the native plugin.
+    final inputPath = await _resolveInputPath(rawInputPath);
 
     final outputPath = await _getCachePath('edited_export.mp4');
 
@@ -351,12 +422,17 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
             ? TabBar(
                 controller: _tabController,
                 indicatorColor: Colors.deepPurpleAccent,
+                isScrollable: true,
                 tabs: const [
                   Tab(icon: Icon(Icons.crop_rotate), text: 'Canvas & Crop'),
                   Tab(icon: Icon(Icons.tune), text: 'Trim & Adjust'),
                   Tab(
                     icon: Icon(Icons.video_collection),
                     text: 'Result Preview',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.add_to_photos_rounded),
+                    text: 'Compose',
                   ),
                 ],
               )
@@ -373,6 +449,7 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
                       _buildCanvasTab(),
                       _buildControlsTab(),
                       _buildResultTab(),
+                      const ComposeScreen(),
                     ],
                   ),
                 ),

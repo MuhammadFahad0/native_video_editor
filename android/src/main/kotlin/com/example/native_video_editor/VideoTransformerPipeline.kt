@@ -48,8 +48,9 @@ internal class VideoTransformerPipeline(
             return
         }
 
+        val inputUri = parseUri(request.inputPath)
         val mediaItem = MediaItem.Builder()
-            .setUri(Uri.fromFile(File(request.inputPath)))
+            .setUri(inputUri)
             .apply {
                 if (request.trimStartMs != null || request.trimEndMs != null) {
                     setClippingConfiguration(
@@ -87,7 +88,13 @@ internal class VideoTransformerPipeline(
                 object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                         cleanup()
-                        onSuccess(request.outputPath)
+                        val exportedFile = File(request.outputPath)
+                        if (!exportedFile.exists() || exportedFile.length() == 0L) {
+                            exportedFile.delete()
+                            onFailure(IllegalStateException("Export failed: Output video file is empty or missing."))
+                        } else {
+                            onSuccess(request.outputPath)
+                        }
                     }
 
                     override fun onError(
@@ -96,6 +103,7 @@ internal class VideoTransformerPipeline(
                         exportException: ExportException,
                     ) {
                         cleanup()
+                        File(request.outputPath).delete()
                         onFailure(exportException)
                     }
                 },
@@ -153,7 +161,14 @@ internal class VideoTransformerPipeline(
 
         val retriever = MediaMetadataRetriever()
         try {
-            retriever.setDataSource(request.inputPath)
+            val inputUri = parseUri(request.inputPath)
+            if (request.inputPath.startsWith("content://")) {
+                retriever.setDataSource(context, inputUri)
+            } else {
+                val path = if (request.inputPath.startsWith("file://")) inputUri.path!! else request.inputPath
+                retriever.setDataSource(path)
+            }
+
             val bitmap = retriever.getFrameAtTime(
                 request.positionMs * 1000,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
@@ -178,15 +193,27 @@ internal class VideoTransformerPipeline(
         return request.outputPath
     }
 
+    private fun parseUri(path: String): Uri {
+        return if (path.startsWith("content://") || path.startsWith("file://")) {
+            Uri.parse(path)
+        } else {
+            Uri.fromFile(File(path))
+        }
+    }
+
     private fun buildVideoEffects(request: VideoEditRequest): List<Effect> {
         val effects = mutableListOf<Effect>()
 
         request.cropRect?.let { rect ->
-            val left = rect.left * 2f - 1f
-            val right = (rect.left + rect.width) * 2f - 1f
-            val top = 1f - rect.top * 2f
-            val bottom = 1f - (rect.top + rect.height) * 2f
-            effects += Crop(left, right, bottom, top)
+            val left = (rect.left * 2f - 1f).coerceIn(-1f, 1f)
+            val right = ((rect.left + rect.width) * 2f - 1f).coerceIn(-1f, 1f)
+            val topVal = 1f - rect.top * 2f
+            val bottomVal = 1f - (rect.top + rect.height) * 2f
+
+            val cropBottom = minOf(topVal, bottomVal).coerceIn(-1f, 1f)
+            val cropTop = maxOf(topVal, bottomVal).coerceIn(-1f, 1f)
+
+            effects += Crop(left, right, cropBottom, cropTop)
         }
 
         if (request.rotationDegrees != 0) {
@@ -209,3 +236,4 @@ internal class VideoTransformerPipeline(
         return effects
     }
 }
+

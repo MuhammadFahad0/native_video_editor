@@ -130,3 +130,89 @@ internal data class VideoCropRect(
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// New request types for composeImageWithAudio and mergeAudioIntoVideo
+// ---------------------------------------------------------------------------
+
+internal data class ImageComposeRequest(
+    val imagePath: String,
+    val audioPath: String,
+    val outputPath: String,
+    val targetWidth: Int,
+    val targetHeight: Int,
+    /** Null means "use the full audio duration". */
+    val audioDurationMs: Long?,
+    val frameRate: Int,
+) {
+    companion object {
+        fun fromMap(map: Map<*, *>): ImageComposeRequest {
+            val imagePath = map["imagePath"] as? String
+            val audioPath = map["audioPath"] as? String
+            val outputPath = map["outputPath"] as? String
+            require(!imagePath.isNullOrBlank()) { "imagePath is required." }
+            require(!audioPath.isNullOrBlank()) { "audioPath is required." }
+            require(!outputPath.isNullOrBlank()) { "outputPath is required." }
+
+            val targetWidth = (map["targetWidth"] as? Number)?.toInt()
+                ?: throw IllegalArgumentException("targetWidth is required.")
+            val targetHeight = (map["targetHeight"] as? Number)?.toInt()
+                ?: throw IllegalArgumentException("targetHeight is required.")
+            val audioDurationMs = (map["audioDurationMs"] as? Number)?.toLong()
+            val frameRate = (map["frameRate"] as? Number)?.toInt() ?: 30
+
+            require(targetWidth > 0 && targetWidth % 2 == 0) {
+                "targetWidth must be a positive even number."
+            }
+            require(targetHeight > 0 && targetHeight % 2 == 0) {
+                "targetHeight must be a positive even number."
+            }
+            require(audioDurationMs == null || audioDurationMs > 0) {
+                "audioDurationMs must be a positive integer."
+            }
+            require(frameRate in 1..120) { "frameRate must be between 1 and 120." }
+
+            return ImageComposeRequest(
+                imagePath = imagePath,
+                audioPath = audioPath,
+                outputPath = outputPath,
+                targetWidth = targetWidth,
+                targetHeight = targetHeight,
+                audioDurationMs = audioDurationMs,
+                frameRate = frameRate,
+            )
+        }
+    }
+}
+
+internal data class AudioMergeRequest(
+    val inputVideoPath: String,
+    val audioPath: String,
+    val outputPath: String,
+    val replaceExistingAudio: Boolean,
+) {
+    companion object {
+        fun fromMap(map: Map<*, *>): AudioMergeRequest {
+            val inputVideoPath = map["inputVideoPath"] as? String
+            val audioPath = map["audioPath"] as? String
+            val outputPath = map["outputPath"] as? String
+            require(!inputVideoPath.isNullOrBlank()) { "inputVideoPath is required." }
+            require(!audioPath.isNullOrBlank()) { "audioPath is required." }
+            require(!outputPath.isNullOrBlank()) { "outputPath is required." }
+            require(
+                File(inputVideoPath).canonicalPath != File(outputPath).canonicalPath
+            ) { "inputVideoPath and outputPath must be different files." }
+            require(
+                File(audioPath).canonicalPath != File(outputPath).canonicalPath
+            ) { "audioPath and outputPath must be different files." }
+
+            return AudioMergeRequest(
+                inputVideoPath = inputVideoPath,
+                audioPath = audioPath,
+                outputPath = outputPath,
+                replaceExistingAudio = map["replaceExistingAudio"] as? Boolean ?: true,
+            )
+        }
+    }
+}
+

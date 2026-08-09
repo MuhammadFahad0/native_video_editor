@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'models/audio_merge_request.dart';
+import 'models/image_video_compose_request.dart';
 import 'models/video_edit_request.dart';
 import 'models/video_thumbnail_request.dart';
 import 'native_video_editor_platform_interface.dart';
@@ -64,4 +66,39 @@ class MethodChannelNativeVideoEditor extends NativeVideoEditorPlatform {
 
     return result;
   }
+
+  @override
+  Future<String> composeImageWithAudio(
+    ImageVideoComposeRequest request,
+  ) async {
+    final result = await methodChannel.invokeMethod<String>(
+      'composeImageWithAudio',
+      request.toMap(),
+    );
+
+    if (result == null || result.isEmpty) {
+      throw const NativeVideoEditorException(
+        'Native image composition completed without an output path.',
+      );
+    }
+
+    return result;
+  }
+
+  @override
+  Future<String> mergeAudioIntoVideo(AudioMergeRequest request) async {
+    final result = await methodChannel.invokeMethod<String>(
+      'mergeAudioIntoVideo',
+      request.toMap(),
+    );
+
+    if (result == null || result.isEmpty) {
+      throw const NativeVideoEditorException(
+        'Native audio merge completed without an output path.',
+      );
+    }
+
+    return result;
+  }
 }
+

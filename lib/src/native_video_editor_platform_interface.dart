@@ -1,5 +1,7 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+import 'models/audio_merge_request.dart';
+import 'models/image_video_compose_request.dart';
 import 'models/video_edit_request.dart';
 import 'models/video_thumbnail_request.dart';
 import 'native_video_editor_method_channel.dart';
@@ -38,6 +40,21 @@ abstract class NativeVideoEditorPlatform extends PlatformInterface {
   /// Extracts a thumbnail image and returns the native output path.
   Future<String> extractThumbnail(VideoThumbnailRequest request) {
     throw UnimplementedError('extractThumbnail() has not been implemented.');
+  }
+
+  /// Composes a still image and an audio file into an MP4 video.
+  ///
+  /// Returns the output path of the composed video.
+  Future<String> composeImageWithAudio(ImageVideoComposeRequest request) {
+    throw UnimplementedError(
+      'composeImageWithAudio() has not been implemented.',
+    );
+  }
+
+  /// Merges an audio track into an existing video file and returns the output
+  /// path.
+  Future<String> mergeAudioIntoVideo(AudioMergeRequest request) {
+    throw UnimplementedError('mergeAudioIntoVideo() has not been implemented.');
   }
 }
 

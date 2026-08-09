@@ -1,6 +1,7 @@
 package com.example.native_video_editor
 
 import android.content.Context
+import androidx.media3.common.util.UnstableApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -8,10 +9,11 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import java.util.concurrent.ConcurrentHashMap
 
+@UnstableApi
 class NativeVideoEditorPlugin : FlutterPlugin, MethodCallHandler {
     private lateinit var channel: MethodChannel
     private lateinit var applicationContext: Context
-    private val activePipelines = ConcurrentHashMap<String, VideoTransformerPipeline>()
+    private val activePipelines = ConcurrentHashMap<String, Any>()
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         applicationContext = flutterPluginBinding.applicationContext
@@ -24,6 +26,8 @@ class NativeVideoEditorPlugin : FlutterPlugin, MethodCallHandler {
             "processVideo" -> processVideo(call, result)
             "cancelProcessVideo" -> cancelProcessVideo(call, result)
             "extractThumbnail" -> extractThumbnail(call, result)
+            "composeImageWithAudio" -> composeImageWithAudio(call, result)
+            "mergeAudioIntoVideo" -> mergeAudioIntoVideo(call, result)
             else -> result.notImplemented()
         }
     }
@@ -65,9 +69,10 @@ class NativeVideoEditorPlugin : FlutterPlugin, MethodCallHandler {
             result.error("invalid_arguments", "Expected outputPath.", null)
             return
         }
-        val pipeline = activePipelines.remove(outputPath)
-        if (pipeline != null) {
-            pipeline.cancel()
+        when (val pipeline = activePipelines.remove(outputPath)) {
+            is VideoTransformerPipeline -> pipeline.cancel()
+            is ImageComposerPipeline -> pipeline.cancel()
+            is AudioMergerPipeline -> pipeline.cancel()
         }
         result.success(null)
     }
@@ -90,11 +95,76 @@ class NativeVideoEditorPlugin : FlutterPlugin, MethodCallHandler {
         }
     }
 
+    private fun composeImageWithAudio(call: MethodCall, result: Result) {
+        val arguments = call.arguments as? Map<*, *>
+        if (arguments == null) {
+            result.error("invalid_arguments", "Expected a request map.", null)
+            return
+        }
+
+        val request = try {
+            ImageComposeRequest.fromMap(arguments)
+        } catch (error: IllegalArgumentException) {
+            result.error("invalid_arguments", error.message, null)
+            return
+        }
+
+        val pipeline = ImageComposerPipeline(applicationContext, channel)
+        activePipelines[request.outputPath] = pipeline
+
+        pipeline.compose(
+            request = request,
+            onSuccess = { outputPath ->
+                activePipelines.remove(outputPath)
+                result.success(outputPath)
+            },
+            onFailure = { error ->
+                activePipelines.remove(request.outputPath)
+                result.error("compose_failed", error.message, error.stackTraceToString())
+            },
+        )
+    }
+
+    private fun mergeAudioIntoVideo(call: MethodCall, result: Result) {
+        val arguments = call.arguments as? Map<*, *>
+        if (arguments == null) {
+            result.error("invalid_arguments", "Expected a request map.", null)
+            return
+        }
+
+        val request = try {
+            AudioMergeRequest.fromMap(arguments)
+        } catch (error: IllegalArgumentException) {
+            result.error("invalid_arguments", error.message, null)
+            return
+        }
+
+        val pipeline = AudioMergerPipeline(applicationContext, channel)
+        activePipelines[request.outputPath] = pipeline
+
+        pipeline.merge(
+            request = request,
+            onSuccess = { outputPath ->
+                activePipelines.remove(outputPath)
+                result.success(outputPath)
+            },
+            onFailure = { error ->
+                activePipelines.remove(request.outputPath)
+                result.error("merge_failed", error.message, error.stackTraceToString())
+            },
+        )
+    }
+
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
         for (pipeline in activePipelines.values) {
-            pipeline.cancel()
+            when (pipeline) {
+                is VideoTransformerPipeline -> pipeline.cancel()
+                is ImageComposerPipeline -> pipeline.cancel()
+                is AudioMergerPipeline -> pipeline.cancel()
+            }
         }
         activePipelines.clear()
     }
 }
+
