@@ -37,8 +37,8 @@ jobs:
       - name: Run Tests
         run: flutter test
 
-      - name: Set up Dart for OIDC Publishing
-        uses: dart-lang/setup-dart@v1
+      - name: Set up pub.dev credentials
+        uses: flutter-actions/setup-pubdev-credentials@v1
 
       - name: Publish to pub.dev
-        run: dart pub publish --force
+        run: flutter pub publish --force
