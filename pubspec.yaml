@@ -7,10 +7,6 @@ topics:
   - video
   - video-editor
   - media
-  - android
-  - ios
-  - macos
-  - windows
 
 environment:
   sdk: ^3.8.0
