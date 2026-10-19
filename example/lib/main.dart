@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import 'widgets/compose_screen.dart';
+import 'widgets/advanced_tools_screen.dart';
 import 'widgets/interactive_crop_overlay.dart';
 import 'widgets/timeline_trim_slider.dart';
 
@@ -465,6 +466,17 @@ class _VideoEditorHomeScreenState extends State<VideoEditorHomeScreen>
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_fix_high),
+            tooltip: 'More video tools',
+            onPressed: _isProcessing
+                ? null
+                : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AdvancedToolsScreen(),
+                    ),
+                  ),
+          ),
           IconButton(
             icon: const Icon(Icons.folder_open),
             tooltip: 'Pick Video',

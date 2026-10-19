@@ -10,6 +10,10 @@
 #include <string>
 #include <unordered_map>
 #include <atomic>
+#include <functional>
+#include <queue>
+#include <thread>
+#include <vector>
 
 namespace native_video_editor {
 
@@ -25,6 +29,16 @@ class NativeVideoEditorPlugin : public flutter::Plugin {
   NativeVideoEditorPlugin& operator=(const NativeVideoEditorPlugin&) = delete;
 
  private:
+  void PostTask(std::function<void()> task);
+  void ComposeVideo(const flutter::EncodableMap& args,
+      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  void GetMediaInfo(const flutter::EncodableMap& args,
+      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  void ReportProgress(const std::string& path, double progress);
+  int window_proc_id_ = -1;
+  bool shutting_down_ = false;
+  std::queue<std::function<void()>> tasks_;
+  std::vector<std::thread> workers_;
   void HandleMethodCall(
       const flutter::MethodCall<flutter::EncodableValue> &method_call,
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);

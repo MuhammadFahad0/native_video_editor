@@ -1,3 +1,20 @@
+## Unreleased
+
+* Add media information and sequential batch thumbnail extraction.
+* Add a shared composition API for joining clips, image slideshows, timed image/text/video overlays, picture-in-picture, audio volume/delay/looping, fit modes and flipping.
+* Add H.264/AAC export settings and compression helpers for all four native backends.
+* Route image/audio composition and audio merging through the composition backend; fix cancellation and protect source paths.
+* Add an advanced tools example and native integration tests with generated media fixtures.
+
+## 0.4.1
+
+* Fix Windows native processing to correctly parse and apply `cropRect`.
+* Fix Windows native processing to instantly abort the export when cancelled, rather than waiting for the entire render to finish.
+* Fix Windows image composition to respect the requested `targetWidth`, `targetHeight`, `frameRate`, and resolve the correct audio duration dynamically when omitted.
+* Fix Android pipeline cancellation logic to immediately stop the export.
+* Fix Android image composition to properly apply the requested `targetWidth` and `targetHeight`.
+* Update README feature table to mark `speedMultiplier` as unsupported on Windows.
+
 ## 0.4.0
 
 * Add desktop platform support for macOS (AVFoundation) and Windows (`Windows.Media.Editing.MediaComposition`).

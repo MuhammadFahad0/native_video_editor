@@ -153,6 +153,8 @@ internal data class ImageComposeRequest(
             require(!imagePath.isNullOrBlank()) { "imagePath is required." }
             require(!audioPath.isNullOrBlank()) { "audioPath is required." }
             require(!outputPath.isNullOrBlank()) { "outputPath is required." }
+            require(File(imagePath).canonicalFile != File(outputPath).canonicalFile &&
+                File(audioPath).canonicalFile != File(outputPath).canonicalFile) { "Output must differ from image and audio paths." }
 
             val targetWidth = (map["targetWidth"] as? Number)?.toInt()
                 ?: throw IllegalArgumentException("targetWidth is required.")

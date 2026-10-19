@@ -13,20 +13,51 @@ platform video stack:
 The first release focuses on a unified native processing pipeline that can apply
 multiple edits in one export.
 
-## Features
+## Platform Support
 
-| Feature | Android | iOS | macOS | Windows |
+The table below describes functionality in the current implementation. Native
+media processing depends on the codecs available on the device. Web and Linux
+are not currently supported.
+
+The composition features are new and require device validation before a release.
+An implemented backend does not guarantee every codec or encoder setting works
+on every device.
+
+| Functionality | Android | iOS | macOS | Windows |
 | --- | --- | --- | --- | --- |
+| Edit video (`processVideo`) | Yes | Yes | Yes | Yes |
 | Trim start/end time | Yes | Yes | Yes | Yes |
 | Normalized crop | Yes | Yes | Yes | Yes |
 | Resize / scale output | Yes | Yes | Yes | Yes |
 | Rotate 0, 90, 180, or 270 degrees | Yes | Yes | Yes | Yes |
-| Speed adjustment | Yes | Yes | Yes | Yes |
+| Speed adjustment (0.25x–4.0x) | Yes | Yes | Yes | No |
 | Mute audio | Yes | Yes | Yes | Yes |
-| Progress reporting & cancellation | Yes | Yes | Yes | Yes |
-| Compose image + audio into video | Yes | Yes | Yes | Yes |
-| Merge / replace background audio | Yes | Yes | Yes | Yes |
-| Thumbnail extraction | Yes | Yes | Yes | Yes |
+| Compose image + audio (`composeImageWithAudio`) | Yes | Yes | Yes | Yes |
+| Add / replace audio (`mergeAudioIntoVideo`) | Yes | Yes | Yes | Yes |
+| Extract JPEG / PNG thumbnail (`extractThumbnail`) | Yes | Yes | Yes | Yes |
+| Media information (`getMediaInfo`) | Yes | Yes | Yes | Yes |
+| Compression / bitrate / frame rate (`compressVideo`) | Yes | Yes | Yes | Yes |
+| Join videos (`joinVideos`) | Yes | Yes | Yes | Yes |
+| Batch thumbnails (`extractThumbnails`) | Yes | Yes | Yes | Yes |
+| Audio volume, delay, trimming and looping (`composeVideo`) | Yes | Yes | Yes | Yes |
+| Image watermarks (`VideoOverlay.image`) | Yes | Yes | Yes | Yes |
+| Fit: contain / cover / stretch (`VideoFit`) | Yes | Yes | Yes | Yes |
+| Horizontal / vertical flipping (`VideoClip`) | Yes | Yes | Yes | Yes |
+| Timed text captions (`VideoOverlay.text`) | Yes | Yes | Yes | Yes |
+| Image slideshow (`createSlideshow`) | Yes | Yes | Yes | Yes |
+| Picture-in-picture (`VideoOverlay.video`) | Yes | Yes | Yes | Yes |
+| Composition progress and cancellation | Yes | Yes | Yes | Yes |
+| Progress: video editing | Yes | Yes | Yes | Yes |
+| Progress: image + audio composition | Yes | Yes | Yes | Yes |
+| Progress: audio merging | Yes | Yes | Yes | Yes |
+| Cancel video editing (`cancelProcessVideo`) | Yes | Yes | Yes | Yes |
+| Cancel image + audio composition (`cancelProcessVideo`) | Yes | Yes | Yes | Yes |
+| Cancel audio merging (`cancelProcessVideo`) | Yes | Yes | Yes | Yes |
+
+On Windows, `speedMultiplier` in `processVideo` is currently ignored. New
+compositions encode H.264 video and AAC audio in MP4. Bitrates are requests to the
+native encoder, not exact output file-size guarantees. Android's video frame-rate
+setting caps the output rate; it does not synthesize missing source frames.
 
 ## Installation
 
@@ -34,7 +65,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  native_video_editor: ^0.4.0
+  native_video_editor: ^0.4.1
 ```
 
 Then run:
@@ -241,6 +272,142 @@ final thumbnailPath = await NativeVideoEditor.extractThumbnail(
 
 Use `.jpg`, `.jpeg`, or `.png` in `outputPath` to choose the image format.
 
+## Composition, Compression and Inspection
+
+The export helpers below share the native composition backend. Metadata and
+thumbnail APIs use native readers. The existing `processVideo` API remains
+available for trim/crop/rotation/speed edits.
+
+```dart
+final info = await NativeVideoEditor.getMediaInfo(videoPath);
+print('${info.width}x${info.height}, ${info.duration}, ${info.videoCodec}');
+
+const settings = VideoExportSettings(
+  width: 1280,
+  height: 720,
+  frameRate: 30,
+  videoBitrate: 2000000, // bits per second
+  audioBitrate: 128000,
+);
+
+await NativeVideoEditor.compressVideo(
+  inputPath: videoPath,
+  outputPath: compressedPath,
+  settings: settings,
+  fit: VideoFit.cover,
+  flipHorizontal: true,
+);
+
+await NativeVideoEditor.joinVideos(
+  inputPaths: [firstVideoPath, secondVideoPath],
+  outputPath: joinedPath,
+  settings: settings,
+);
+
+await NativeVideoEditor.createSlideshow(
+  imagePaths: [firstImagePath, secondImagePath],
+  imageDuration: const Duration(seconds: 3),
+  outputPath: slideshowPath,
+  settings: settings,
+  audioTracks: [CompositionAudioTrack(musicPath, loop: true, volume: 0.3)],
+);
+
+final thumbnails = await NativeVideoEditor.extractThumbnails(
+  inputPath: videoPath,
+  positions: [Duration.zero, const Duration(seconds: 2)],
+  outputPaths: [firstThumbnailPath, secondThumbnailPath],
+);
+```
+
+Metadata fields that the native platform cannot determine are nullable. Codec
+names use each platform's naming, and width/height describe encoded dimensions
+before `rotationDegrees` is applied. Thumbnail batches run sequentially; if a
+later extraction fails, earlier output files remain available.
+`info.audioTracks` lists the available audio streams with codec, channel count,
+sample rate, bitrate and language when the platform reports them. Track indices
+follow native source ordering and can differ between platforms.
+
+For preset settings, use `const VideoExportSettings.low()` (640×360, 24 FPS,
+800 kbps video), `.medium()` (1280×720, 30 FPS, 2 Mbps), or `.high()`
+(1920×1080, 30 FPS, 8 Mbps). Presets control resolution and bitrate; they do not
+guarantee a particular perceptual quality or final file size.
+
+### Watermarks, Captions, Audio and Picture-in-Picture
+
+```dart
+await NativeVideoEditor.composeVideo(
+  VideoCompositionRequest(
+    outputPath: outputPath,
+    settings: settings,
+    clips: [
+      VideoClip.video(videoPath, volume: 0.5, fit: VideoFit.contain),
+      VideoClip.image(imagePath, duration: const Duration(seconds: 3)),
+    ],
+    audioTracks: [
+      CompositionAudioTrack(
+        musicPath,
+        start: const Duration(seconds: 1), // delay on the output timeline
+        trimStart: const Duration(seconds: 2), // skip source audio intro
+        duration: const Duration(seconds: 5), // source segment to loop
+        volume: 0.25,
+        loop: true,
+      ),
+    ],
+    overlays: [
+      VideoOverlay.image(
+        logoPath,
+        rect: const VideoCropRect(left: 0.02, top: 0.02, width: 0.2, height: 0.2),
+        opacity: 0.8,
+      ),
+      VideoOverlay.text(
+        'My caption',
+        rect: const VideoCropRect(left: 0.05, top: 0.8, width: 0.9, height: 0.15),
+        fontSize: 40, // pixels in the final output canvas
+        start: const Duration(seconds: 1),
+        duration: const Duration(seconds: 3),
+        color: 0xFFFFFFFF, // ARGB
+      ),
+      VideoOverlay.video(
+        insetVideoPath,
+        rect: const VideoCropRect(left: 0.65, top: 0.05, width: 0.3, height: 0.3),
+        start: const Duration(seconds: 2),
+        duration: const Duration(seconds: 4),
+      ),
+    ],
+  ),
+  onProgress: (progress) => print('Export: $progress'),
+);
+// From another handler:
+// await NativeVideoEditor.cancelProcessVideo(outputPath);
+```
+
+Clips play sequentially. Their combined duration determines the output length;
+overlays and background audio never extend it. Video clips/overlays are capped at
+their remaining source duration. Image clips require a positive duration.
+Overlay rectangles are normalized relative to the final canvas, with a top-left
+origin. Later overlays appear above earlier ones. Picture-in-picture video is
+silent; use an audio track when additional audio is needed.
+
+`contain` preserves aspect ratio with empty space, `cover` crops to fill, and
+`stretch` fills without preserving aspect ratio. Captions are rendered into
+transparent PNGs with Flutter's fonts, wrap to their rectangle, and clip any
+overflow. Text rendering requires an initialized Flutter engine. There is no
+automatic speech transcription or subtitle-file parser.
+
+### Native Integration Checks
+
+The example includes a test that generates its own images/audio and verifies
+actual native exports, metadata, dimensions, duration, watermarks and thumbnails:
+
+```sh
+cd example
+flutter pub get
+flutter test integration_test/composition_integration_test.dart -d <device-id>
+```
+
+Run it on each target platform before publishing. Mocked Dart unit tests alone
+cannot validate native codecs or rendered output.
+
 ## File Path Notes
 
 The plugin expects local file paths. It does not request storage permissions or
@@ -279,7 +446,12 @@ The example features:
   process them.
 * Long videos can take time to export because processing is done by the native
   platform stack.
-* Watermarks, text overlays, and advanced filter effects are planned for later phases.
+* Advanced filters, transitions, reverse playback, Web and Linux backends are not implemented.
+* Apple image timelines currently create temporary video clips before final encoding;
+  long slideshows need additional temporary disk space.
+* Windows video crops and flips use a temporary transcode before composition;
+  these operations need additional time and disk space.
+* Native encoders may adjust requested bitrates or reject unsupported dimensions.
 
 ## Troubleshooting
 

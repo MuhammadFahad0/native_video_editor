@@ -1,4 +1,6 @@
 import 'models/audio_merge_request.dart';
+import 'models/media_info.dart';
+import 'models/video_composition_request.dart';
 import 'models/image_video_compose_request.dart';
 import 'native_video_editor_platform_interface.dart';
 import 'models/video_edit_request.dart';
@@ -11,6 +13,126 @@ import 'models/video_thumbnail_request.dart';
 /// host app can access.
 class NativeVideoEditor {
   const NativeVideoEditor._();
+
+  static Future<MediaInfo> getMediaInfo(String inputPath) =>
+      NativeVideoEditorPlatform.instance.getMediaInfo(inputPath);
+
+  /// Exports a timeline with audio, watermarks, captions and picture-in-picture.
+  /// Cancel with [cancelProcessVideo], using the composition's output path.
+  static Future<String> composeVideo(
+    VideoCompositionRequest request, {
+    void Function(double progress)? onProgress,
+  }) async {
+    request.toMap();
+    final platform = NativeVideoEditorPlatform.instance;
+    if (platform.progressCallbacks.containsKey(request.outputPath)) {
+      throw StateError('An export is already active for this output path.');
+    }
+    platform.progressCallbacks[request.outputPath] = onProgress ?? (_) {};
+    try {
+      return await platform.composeVideo(request);
+    } finally {
+      platform.progressCallbacks.remove(request.outputPath);
+    }
+  }
+
+  /// Re-encodes a video to H.264/AAC with explicit resolution and bitrates.
+  static Future<String> compressVideo({
+    required String inputPath,
+    required String outputPath,
+    VideoExportSettings settings = const VideoExportSettings(),
+    VideoFit fit = VideoFit.contain,
+    bool flipHorizontal = false,
+    bool flipVertical = false,
+    void Function(double progress)? onProgress,
+  }) => composeVideo(
+    VideoCompositionRequest(
+      outputPath: outputPath,
+      settings: settings,
+      clips: [
+        VideoClip.video(
+          inputPath,
+          fit: fit,
+          flipHorizontal: flipHorizontal,
+          flipVertical: flipVertical,
+        ),
+      ],
+    ),
+    onProgress: onProgress,
+  );
+
+  /// Joins clips in order; sources are fitted to the requested output canvas.
+  static Future<String> joinVideos({
+    required List<String> inputPaths,
+    required String outputPath,
+    VideoExportSettings settings = const VideoExportSettings(),
+    VideoFit fit = VideoFit.contain,
+    void Function(double progress)? onProgress,
+  }) => composeVideo(
+    VideoCompositionRequest(
+      outputPath: outputPath,
+      settings: settings,
+      clips: inputPaths.map((p) => VideoClip.video(p, fit: fit)).toList(),
+    ),
+    onProgress: onProgress,
+  );
+
+  /// Creates a slideshow with a fixed duration per image and optional music.
+  static Future<String> createSlideshow({
+    required List<String> imagePaths,
+    required String outputPath,
+    Duration imageDuration = const Duration(seconds: 3),
+    VideoExportSettings settings = const VideoExportSettings(),
+    VideoFit fit = VideoFit.contain,
+    List<CompositionAudioTrack> audioTracks = const [],
+    void Function(double progress)? onProgress,
+  }) => composeVideo(
+    VideoCompositionRequest(
+      outputPath: outputPath,
+      settings: settings,
+      clips: imagePaths
+          .map((p) => VideoClip.image(p, duration: imageDuration, fit: fit))
+          .toList(),
+      audioTracks: audioTracks,
+    ),
+    onProgress: onProgress,
+  );
+
+  /// Extracts frames sequentially in request order using the native extractor.
+  /// [outputPaths] must contain one unique path per position. Existing files are replaced.
+  static Future<List<String>> extractThumbnails({
+    required String inputPath,
+    required List<Duration> positions,
+    required List<String> outputPaths,
+    int quality = 90,
+    void Function(double progress)? onProgress,
+  }) async {
+    if (positions.isEmpty ||
+        positions.length != outputPaths.length ||
+        outputPaths.toSet().length != outputPaths.length) {
+      throw ArgumentError(
+        'Provide nonempty positions and matching unique output paths.',
+      );
+    }
+    final requests = List.generate(
+      positions.length,
+      (i) => VideoThumbnailRequest(
+        inputPath: inputPath,
+        outputPath: outputPaths[i],
+        position: positions[i],
+        quality: quality,
+      ),
+    );
+    for (final request in requests) {
+      request.toMap();
+    }
+    final outputs = <String>[];
+    for (final request in requests) {
+      outputs.add(await extractThumbnail(request));
+      onProgress?.call(outputs.length / requests.length);
+    }
+    return outputs;
+  }
 
   /// Processes a video with one or more edits and returns the output path.
   ///

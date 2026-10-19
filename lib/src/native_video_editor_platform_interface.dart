@@ -1,6 +1,8 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'models/audio_merge_request.dart';
+import 'models/media_info.dart';
+import 'models/video_composition_request.dart';
 import 'models/image_video_compose_request.dart';
 import 'models/video_edit_request.dart';
 import 'models/video_thumbnail_request.dart';
@@ -26,6 +28,14 @@ abstract class NativeVideoEditorPlatform extends PlatformInterface {
 
   /// Active progress callbacks keyed by the video outputPath.
   final Map<String, void Function(double progress)> progressCallbacks = {};
+
+  Future<MediaInfo> getMediaInfo(String inputPath) {
+    throw UnimplementedError('getMediaInfo() has not been implemented.');
+  }
+
+  Future<String> composeVideo(VideoCompositionRequest request) {
+    throw UnimplementedError('composeVideo() has not been implemented.');
+  }
 
   /// Processes a video and returns the native output path.
   Future<String> processVideo(VideoEditRequest request) {

@@ -33,6 +33,8 @@ internal class VideoTransformerPipeline(
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
     private var transformer: Transformer? = null
+    private var cancellationFailure: ((Throwable) -> Unit)? = null
+    private var outputPath: String? = null
     @Volatile
     private var isRunning = false
 
@@ -41,6 +43,8 @@ internal class VideoTransformerPipeline(
         onSuccess: (String) -> Unit,
         onFailure: (Throwable) -> Unit,
     ) {
+        cancellationFailure = onFailure
+        outputPath = request.outputPath
         val outputFile = File(request.outputPath)
         outputFile.parentFile?.mkdirs()
         if (outputFile.exists() && !outputFile.delete()) {
@@ -137,12 +141,16 @@ internal class VideoTransformerPipeline(
     fun cancel() {
         if (!isRunning) return
         isRunning = false
-        cleanup()
+        val failure = cancellationFailure
+        val path = outputPath
         try {
             transformer?.cancel()
         } catch (e: Exception) {
             // Ignore cancellation errors
         }
+        cleanup()
+        path?.let { File(it).delete() }
+        failure?.invoke(java.util.concurrent.CancellationException("Video processing cancelled."))
     }
 
     private fun cleanup() {
@@ -150,6 +158,8 @@ internal class VideoTransformerPipeline(
         progressRunnable?.let { handler.removeCallbacks(it) }
         progressRunnable = null
         transformer = null
+        cancellationFailure = null
+        outputPath = null
     }
 
     fun extractThumbnail(request: VideoThumbnailRequest): String {
@@ -171,7 +181,7 @@ internal class VideoTransformerPipeline(
 
             val bitmap = retriever.getFrameAtTime(
                 request.positionMs * 1000,
-                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                MediaMetadataRetriever.OPTION_CLOSEST,
             ) ?: throw IllegalStateException("Unable to extract a thumbnail frame.")
 
             FileOutputStream(outputFile).use { output ->

@@ -82,6 +82,12 @@ class ImageVideoComposeRequest {
     if (outputPath.trim().isEmpty) {
       throw ArgumentError.value(outputPath, 'outputPath', 'Must not be empty.');
     }
+    if (outputPath.trim() == imagePath.trim() ||
+        outputPath.trim() == audioPath.trim()) {
+      throw ArgumentError(
+        'outputPath must differ from imagePath and audioPath.',
+      );
+    }
     if (targetWidth <= 0 || targetWidth.isOdd) {
       throw ArgumentError.value(
         targetWidth,

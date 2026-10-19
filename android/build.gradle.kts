@@ -31,7 +31,7 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all {
-                it.useJUnitPlatform()
+                it.useJUnit()
                 it.outputs.upToDateWhen { false }
                 it.testLogging {
                     events("passed", "skipped", "failed", "standardOut", "standardError")
@@ -50,6 +50,7 @@ dependencies {
     implementation("androidx.media3:media3-transformer:$media3Version")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }
 

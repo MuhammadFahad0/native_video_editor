@@ -6,10 +6,32 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 
 import 'package:native_video_editor_example/main.dart';
 
 void main() {
+  testWidgets('advanced tools are accessible before picking a video', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const NativeVideoEditorExampleApp());
+    await tester.tap(find.byTooltip('More video tools'));
+    await tester.pumpAndSettle();
+    expect(find.text('More video tools'), findsOneWidget);
+    expect(find.text('Media information'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Run tool'),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.text('Run tool'), findsOneWidget);
+  });
+
   testWidgets('shows the video picker on startup', (tester) async {
     await tester.pumpWidget(const NativeVideoEditorExampleApp());
 

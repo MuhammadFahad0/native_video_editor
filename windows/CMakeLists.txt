@@ -29,7 +29,7 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
 
 target_compile_options(${PLUGIN_NAME} PRIVATE /await:strict /std:c++17)
-target_link_libraries(${PLUGIN_NAME} PRIVATE windowsapp)
+target_link_libraries(${PLUGIN_NAME} PRIVATE windowsapp d3d11 dxgi)
 
 set(native_video_editor_public_headers
   "include/native_video_editor/native_video_editor_plugin_c_api.h"

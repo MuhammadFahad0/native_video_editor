@@ -168,6 +168,10 @@ struct ImageComposeRequest {
     guard let outputPath = map["outputPath"] as? String, !outputPath.trimmingCharacters(in: .whitespaces).isEmpty else {
       throw VideoEditRequestError.invalid("outputPath is required.")
     }
+    let outputURL = URL(fileURLWithPath: outputPath).standardizedFileURL.resolvingSymlinksInPath()
+    if [imagePath, audioPath].contains(where: {
+      URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath() == outputURL
+    }) { throw VideoEditRequestError.invalid("Output must differ from image and audio paths.") }
     guard let targetWidth = (map["targetWidth"] as? NSNumber)?.intValue else {
       throw VideoEditRequestError.invalid("targetWidth is required.")
     }

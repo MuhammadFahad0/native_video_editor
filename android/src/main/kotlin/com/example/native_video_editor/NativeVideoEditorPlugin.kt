@@ -23,6 +23,30 @@ class NativeVideoEditorPlugin : FlutterPlugin, MethodCallHandler {
 
     override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
+            "getMediaInfo" -> {
+                val path = (call.arguments as? Map<*, *>)?.get("inputPath") as? String
+                if (path.isNullOrBlank()) { result.error("invalid_arguments", "inputPath is required.", null); return }
+                Thread {
+                    try {
+                        val info = CompositionPipeline.mediaInfo(applicationContext, path)
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { result.success(info) }
+                    } catch (error: Throwable) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { result.error("metadata_failed", error.message, null) }
+                    }
+                }.start()
+            }
+            "composeVideo" -> {
+                val args = call.arguments as? Map<*, *>
+                val path = args?.get("outputPath") as? String
+                if (args == null || path.isNullOrBlank()) { result.error("invalid_arguments", "outputPath is required.", null); return }
+                if (activePipelines.containsKey(path)) { result.error("output_in_use", "Output already has an active export.", null); return }
+                val pipeline = CompositionPipeline(applicationContext, channel)
+                activePipelines[path] = pipeline
+                pipeline.compose(args) { error ->
+                    activePipelines.remove(path)
+                    if (error == null) result.success(path) else result.error("composition_failed", error.message, null)
+                }
+            }
             "processVideo" -> processVideo(call, result)
             "cancelProcessVideo" -> cancelProcessVideo(call, result)
             "extractThumbnail" -> extractThumbnail(call, result)
@@ -70,6 +94,7 @@ class NativeVideoEditorPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
         when (val pipeline = activePipelines.remove(outputPath)) {
+            is CompositionPipeline -> pipeline.cancel()
             is VideoTransformerPipeline -> pipeline.cancel()
             is ImageComposerPipeline -> pipeline.cancel()
             is AudioMergerPipeline -> pipeline.cancel()
@@ -159,6 +184,7 @@ class NativeVideoEditorPlugin : FlutterPlugin, MethodCallHandler {
         channel.setMethodCallHandler(null)
         for (pipeline in activePipelines.values) {
             when (pipeline) {
+                is CompositionPipeline -> pipeline.cancel()
                 is VideoTransformerPipeline -> pipeline.cancel()
                 is ImageComposerPipeline -> pipeline.cancel()
                 is AudioMergerPipeline -> pipeline.cancel()
